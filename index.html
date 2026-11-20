@@ -57,6 +57,7 @@
   .stat .r i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--azul); }
   .stat .r span { position: absolute; inset: 0; text-align: center; font-size: 12px; line-height: 18px; color: #e8efe9; }
   /* janela do campo */
+  #mc-lista td, #el-lista td { white-space: nowrap; }
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; z-index: 10; padding: 10px; }
   .modal.on { display: flex; }
   .modal .janela { background: var(--painel); border: 1px solid var(--borda); border-radius: 14px; padding: 10px; width: min(980px, 100%); max-height: 100%; overflow: auto; }
@@ -187,6 +188,8 @@
         <div class="caixa"><h2 id="c-prox-tit">Próximo jogo</h2><div id="c-prox"></div>
           <p><button class="prim" id="c-jogar">▶ Jogar a partida</button> <button id="c-simular">⏭ Simular o jogo</button></p></div>
         <div class="caixa" style="margin-top:12px"><h2>Resultados da rodada</h2><div class="res-l" id="c-res"></div></div>
+        <div class="caixa" style="margin-top:12px"><h2>💰 Finanças</h2><div id="c-fin"></div>
+          <p><button id="c-elenco">👥 Elenco e vendas</button> <button class="prim" id="c-mercado">🛒 Mercado de transferências</button></p><div id="c-ofertas"></div></div>
         <div class="caixa" style="margin-top:12px"><h2>Diretoria</h2><div id="c-dir"></div></div>
       </div>
       <div class="caixa"><div class="abas" id="c-abas"></div><table class="tab"><thead><tr><th>#</th><th>Clube</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr></thead><tbody id="c-tab"></tbody></table>
@@ -194,6 +197,31 @@
     </div>
     <p><button id="c-salvar">💾 Salvar</button> <button data-tela="menu">↩ Menu</button></p>
   </section>
+
+  <section id="elenco" class="tela">
+    <button class="voltar" data-tela="carreira">↩ Temporada</button>
+    <div class="caixa"><h2 id="el-tit">👥 Elenco</h2><div class="dica" id="el-info"></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Jogador</th><th>Pos</th><th>Idade</th><th>Força</th><th>Valor</th><th>Salário/rodada</th><th></th></tr></thead><tbody id="el-lista"></tbody></table></div>
+      <p class="dica">"À venda": outros clubes podem fazer propostas a cada rodada. "Vender já": vende na hora por 70% do valor. O elenco precisa ter entre 16 e 35 jogadores.</p></div>
+  </section>
+
+  <section id="mercado" class="tela">
+    <button class="voltar" data-tela="carreira">↩ Temporada</button>
+    <div class="caixa"><h2>🛒 Mercado de transferências</h2><div class="dica" id="mc-info"></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:10px 0">
+        <label class="dica">Nome<input type="text" id="mc-nome" placeholder="buscar"></label>
+        <label class="dica">Posição<select id="mc-pos"><option value="">Todas</option></select></label>
+        <label class="dica">Divisão<select id="mc-div"><option value="">Todas</option></select></label>
+        <label class="dica">Preço máximo (R$ mi)<input type="text" id="mc-max" inputmode="decimal" placeholder="sem limite"></label>
+        <label class="dica">Força mínima<input type="text" id="mc-fmin" inputmode="numeric" placeholder="0"></label></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Jogador</th><th>Pos</th><th>Idade</th><th>Força</th><th>Clube</th><th>Valor</th><th></th></tr></thead><tbody id="mc-lista"></tbody></table></div>
+      <p class="dica" id="mc-rodape"></p></div>
+  </section>
+  <div class="modal" id="m-prop"><div class="janela" style="max-width:440px">
+    <h2 id="pr-tit"></h2><div class="dica" id="pr-info"></div>
+    <div class="ft"><label>Sua proposta (R$ mi)</label><input type="text" id="pr-valor" inputmode="decimal"></div>
+    <p class="dica" id="pr-msg"></p>
+    <p><button class="prim" id="pr-enviar">Enviar proposta</button> <button id="pr-fechar">Fechar</button></p></div></div>
 
   <section id="editor" class="tela">
     <button class="voltar" data-tela="menu">↩ Menu</button>
@@ -934,7 +962,7 @@ $("subs-cancelar").onclick = () => $("subs").classList.remove("on");
    TELAS · MENU · CONFIGURAÇÕES · CARREIRA · EDITOR
    ===================================================================== */
 var MODO_CARREIRA = null, C = null;               // C = carreira em andamento (salva no navegador)
-const TELAS = ["menu", "config", "novo", "carreira", "editor", "online", "inicio", "partida"];
+const TELAS = ["menu", "config", "novo", "carreira", "elenco", "mercado", "editor", "online", "inicio", "partida"];
 function tela(id) {
   for (const t of TELAS) $(t)?.classList.toggle("on", t === id);
   document.body.classList.toggle("verde", id !== "partida");
@@ -1187,10 +1215,10 @@ $("c-jogar").onclick = () => {
   ESC_TIME = null; MODO_CARREIRA = { rodada: C.rodada }; abrirEscalacao("pre");
 };
 function fimDoJogoCarreira(fim) { decidirMeuJogo([fim.casa.gols, fim.fora.gols]); }
-function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, jog: t.jog.map(p => ({ id: p.id, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
+function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
 function aplicarTatica(t, tat) {                         // repete a escalação da última partida (quem ainda estiver no elenco)
   const todos = [...t.jog, ...t.banco], novo = [];
-  for (const s of tat.jog) { const p = todos.find(x => x.id === s.id); if (p && !novo.includes(p)) { Object.assign(p, { papel: s.papel, bx: s.bx, by: s.by }); novo.push(p); } }
+  for (const s of tat.jog) { const p = todos.find(x => s.nome ? x.nome === s.nome : x.id === s.id); if (p && !novo.includes(p)) { Object.assign(p, { papel: s.papel, bx: s.bx, by: s.by }); novo.push(p); } }
   if (novo.length !== 11) return;
   t.jog = novo; t.banco = todos.filter(p => !novo.includes(p)); t.formacao = tat.formacao; t.estilo = tat.estilo;
 }
@@ -1199,7 +1227,7 @@ $("c-salvar").onclick = () => { salvar(); $("c-salvar").textContent = "✅ Salvo
 /* ---------- salvar / carregar ---------- */
 const CHAVE_SALVO = "tecnico_carreira_v2";
 function salvar() {
-  const elencos = {}; for (const tec of C.tecnicos) { const t = timePorId(tec.clube); if (t) elencos[tec.clube] = t.jogadores; }
+  const elencos = {}; for (const id of new Set([...C.tecnicos.map(t => t.clube), ...(C.mudados || [])])) { const t = timePorId(id); if (t) elencos[id] = t.jogadores; }
   try { localStorage.setItem(CHAVE_SALVO, JSON.stringify({ ...C, elencos })); } catch (e) { alert("Não consegui salvar (memória do navegador cheia?)."); }
 }
 function lerSalvo() { try { return JSON.parse(localStorage.getItem(CHAVE_SALVO) || "null"); } catch (e) { return null; } }
@@ -1209,6 +1237,151 @@ $("m-salvo").onclick = () => {
   if (s.tecnicos.some(t => !timePorId(t.clube))) return alert("Um clube deste jogo salvo não está no pacote de times atual.");
   for (const [id, j] of Object.entries(s.elencos || {})) if (timePorId(id) && j) timePorId(id).jogadores = j;
   delete s.elencos; C = s; ABA_TAB = null; abrirCarreira();
+};
+
+
+/* =====================================================================
+   FINANÇAS E MERCADO DE TRANSFERÊNCIAS (carreira)
+   Valores em R$ milhões. Jogador = [nome, posição, força, idade].
+   ===================================================================== */
+const TV_RODADA = { A: 1.2, B: 0.35, C: 0.1, D: 0.03 }, BILHETERIA = { A: 0.8, B: 0.25, C: 0.08, D: 0.02 }, CAIXA_INICIAL = { A: 40, B: 12, C: 4, D: 1.5 };
+const fatorIdade = i => i <= 21 ? 1.4 : i <= 27 ? 1.2 : i <= 30 ? 1 : i <= 33 ? .6 : .3;
+const valorJog = j => Math.round(0.3 * Math.pow(1.13, j[2] - 50) * fatorIdade(j[3]) * 100) / 100;
+const salarioJog = j => Math.round(valorJog(j) * 0.007 * 1000) / 1000;
+const dinheiro = v => (v < 0 ? "−" : "") + "R$ " + (Math.abs(v) >= 1 ? Math.abs(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mi" : Math.round(Math.abs(v) * 1000).toLocaleString("pt-BR") + " mil");
+const folha = t => (t?.jogadores || []).reduce((a, j) => a + salarioJog(j), 0);
+function fin(id) {                                        // caixa dos clubes dos técnicos humanos
+  C.fin ||= {};
+  if (!C.fin[id]) { const d = divDe(id) || "D", ids = C.ligas[d].ids, rank = ids.map(x => [x, forcaTime(timePorId(x))]).sort((a, b) => b[1] - a[1]).findIndex(x => x[0] === id);
+    C.fin[id] = { caixa: Math.round(CAIXA_INICIAL[d] * (1.5 - rank / ids.length) * 10) / 10, venda: [], ultimo: null }; }
+  return C.fin[id];
+}
+const norm = x => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const marcarMudado = id => { (C.mudados ||= []); if (!C.mudados.includes(id)) C.mudados.push(id); };
+
+// finanças e propostas de compra depois de cada rodada
+const _jogarRodada = jogarRodada;
+jogarRodada = function () {
+  _jogarRodada();
+  for (const tec of C.tecnicos) {
+    if (tec.demitido) continue;
+    const f = fin(tec.clube), d = divDe(tec.clube) || tec.div, t = timePorId(tec.clube);
+    const jogo = (C.ultimos || []).find(x => x[0] === tec.clube || x[1] === tec.clube), casa = jogo && jogo[0] === tec.clube;
+    const receita = TV_RODADA[d] + (casa ? BILHETERIA[d] * (0.7 + Math.random() * 0.6) : 0), despesa = folha(t);
+    f.caixa = Math.round((f.caixa + receita - despesa) * 100) / 100;
+    f.ultimo = { receita, despesa };
+    if (f.caixa < 0) { tec.conf = Math.max(0, tec.conf - 2); tec.avisos.push(`💸 O clube está no vermelho (${dinheiro(f.caixa)}). A diretoria cobra equilíbrio nas contas.`); }
+    // jogadores à venda recebem propostas de outros clubes
+    tec.ofertas = (tec.ofertas || []).filter(o => t.jogadores.some(j => j[0] === o.nome));
+    for (const nome of f.venda) {
+      const j = t.jogadores.find(x => x[0] === nome); if (!j || tec.ofertas.some(o => o.nome === nome) || Math.random() > .35) continue;
+      const compradores = Object.values(C.ligas).flatMap(l => l.ids).filter(id => id !== tec.clube && !C.tecnicos.some(x => !x.demitido && x.clube === id));
+      tec.ofertas.push({ nome, clube: sorteia(compradores), valor: Math.round(valorJog(j) * (0.8 + Math.random() * 0.45) * 100) / 100 });
+    }
+  }
+  salvar(); abrirCarreira();
+};
+const _abrirCarreira = abrirCarreira;
+abrirCarreira = function () {
+  _abrirCarreira(); if (!C) return;
+  const tec = T();
+  if (tec.demitido) { $("c-fin").innerHTML = "<p class='dica'>Sem clube no momento.</p>"; $("c-elenco").hidden = $("c-mercado").hidden = true; $("c-ofertas").innerHTML = ""; return; }
+  $("c-elenco").hidden = $("c-mercado").hidden = false;
+  const f = fin(tec.clube), t = timePorId(tec.clube);
+  $("c-fin").innerHTML = `<p>Caixa: <b style="color:${f.caixa < 0 ? "var(--verm)" : "var(--verde)"}">${dinheiro(f.caixa)}</b> · folha por rodada: ${dinheiro(folha(t))} · elenco: ${t.jogadores.length} jogadores (valor ${dinheiro(t.jogadores.reduce((a, j) => a + valorJog(j), 0))})</p>` +
+    (f.ultimo ? `<p class="dica">Última rodada: receitas ${dinheiro(f.ultimo.receita)} (TV${f.ultimo.receita > TV_RODADA[tec.div] + .001 ? " + bilheteria" : ""}) · salários ${dinheiro(f.ultimo.despesa)}</p>` : "");
+  $("c-ofertas").innerHTML = (tec.ofertas || []).map((o, i) => `<p>📩 ${esc(nomeTime(o.clube))} oferece <b>${dinheiro(o.valor)}</b> por <b>${esc(o.nome)}</b> <button data-of-ok="${i}">✔ Aceitar</button> <button data-of-no="${i}">✖ Recusar</button></p>`).join("");
+};
+$("c-ofertas").onclick = e => {
+  const ok = e.target.closest("[data-of-ok]"), no = e.target.closest("[data-of-no]"); if (!ok && !no) return;
+  const tec = T(), i = Number((ok || no).dataset.ofOk ?? (ok || no).dataset.ofNo), o = tec.ofertas[i]; if (!o) return;
+  if (ok) { const r = transferir(o.nome, tec.clube, o.clube, o.valor); if (r) return alert(r); tec.avisos.push(`✔ ${o.nome} foi vendido ao ${nomeTime(o.clube)} por ${dinheiro(o.valor)}.`); }
+  tec.ofertas.splice(i, 1); salvar(); abrirCarreira();
+};
+// move um jogador de um clube para outro e acerta o dinheiro dos clubes humanos
+function transferir(nome, de, para, valor) {
+  const td = timePorId(de), tp = timePorId(para), k = td.jogadores.findIndex(j => j[0] === nome);
+  if (k < 0) return "Esse jogador não está mais no clube.";
+  if (td.jogadores.length <= 16) return `${td.nome} ficaria com menos de 16 jogadores.`;
+  if (tp.jogadores.length >= 35) return `${tp.nome} já tem 35 jogadores.`;
+  const humano = id => C.tecnicos.some(x => !x.demitido && x.clube === id);
+  if (humano(para) && fin(para).caixa < valor) return "Dinheiro insuficiente em caixa.";
+  const [j] = td.jogadores.splice(k, 1); tp.jogadores.push(j);
+  if (humano(de)) { fin(de).caixa = Math.round((fin(de).caixa + valor) * 100) / 100; fin(de).venda = fin(de).venda.filter(n => n !== nome); }
+  if (humano(para)) fin(para).caixa = Math.round((fin(para).caixa - valor) * 100) / 100;
+  marcarMudado(de); marcarMudado(para);
+  return "";
+}
+
+/* ---------- elenco e vendas ---------- */
+function abrirElenco() {
+  const tec = T(), t = timePorId(tec.clube), f = fin(tec.clube), ordem = ["GOL","ZAG","LD","LE","VOL","MC","MEI","PE","PD","CA"];
+  $("el-tit").textContent = `👥 Elenco — ${t.nome}`;
+  $("el-info").textContent = `Caixa ${dinheiro(f.caixa)} · ${t.jogadores.length} jogadores · folha por rodada ${dinheiro(folha(t))}`;
+  $("el-lista").innerHTML = t.jogadores.slice().sort((a, b) => ordem.indexOf(a[1]) - ordem.indexOf(b[1]) || b[2] - a[2]).map(j => { const v = f.venda.includes(j[0]);
+    return `<tr><td>${esc(j[0])}${v ? " <span class='dica'>(à venda)</span>" : ""}</td><td>${j[1]}</td><td>${j[3]}</td><td><b>${j[2]}</b></td><td>${dinheiro(valorJog(j))}</td><td>${dinheiro(salarioJog(j))}</td>
+      <td><button data-el-venda="${esc(j[0])}">${v ? "Tirar da venda" : "À venda"}</button> <button data-el-ja="${esc(j[0])}">Vender já</button></td></tr>`; }).join("");
+  tela("elenco");
+}
+$("c-elenco").onclick = abrirElenco;
+$("el-lista").onclick = e => {
+  const tec = T(), f = fin(tec.clube), t = timePorId(tec.clube), a = e.target.closest("[data-el-venda]"), b = e.target.closest("[data-el-ja]");
+  if (a) { const n = a.dataset.elVenda; f.venda = f.venda.includes(n) ? f.venda.filter(x => x !== n) : [...f.venda, n]; salvar(); return abrirElenco(); }
+  if (b) { const n = b.dataset.elJa, j = t.jogadores.find(x => x[0] === n); if (!j) return;
+    const v = Math.round(valorJog(j) * 0.7 * 100) / 100;
+    if (!confirm(`Vender ${n} agora por ${dinheiro(v)} (70% do valor)?`)) return;
+    const outros = Object.values(C.ligas).flatMap(l => l.ids).filter(id => id !== tec.clube && !C.tecnicos.some(x => !x.demitido && x.clube === id) && timePorId(id).jogadores.length < 35);
+    const r = transferir(n, tec.clube, sorteia(outros), v); if (r) return alert(r);
+    tec.avisos.push(`💰 ${n} vendido por ${dinheiro(v)}.`); salvar(); abrirElenco(); }
+};
+
+/* ---------- mercado: comprar de outros clubes ---------- */
+function abrirMercado() {
+  if (!$("mc-pos").options.length || $("mc-pos").options.length < 2) {
+    $("mc-pos").innerHTML = `<option value="">Todas</option>` + POS.map(p => `<option>${p}</option>`).join("");
+    $("mc-div").innerHTML = `<option value="">Todas</option>` + DIVS.map(d => `<option value="${d}">${NOME_DIV[d]}</option>`).join("");
+  }
+  listarMercado(); tela("mercado");
+}
+function listarMercado() {
+  const tec = T(), f = fin(tec.clube), nome = norm($("mc-nome").value), pos = $("mc-pos").value, div = $("mc-div").value;
+  const max = parseFloat(String($("mc-max").value).replace(",", ".")) || Infinity, fmin = Number($("mc-fmin").value) || 0;
+  $("mc-info").textContent = `Seu caixa: ${dinheiro(f.caixa)} · ${timePorId(tec.clube).jogadores.length}/35 jogadores`;
+  const lista = [];
+  for (const d of DIVS) { if (div && d !== div) continue; for (const id of C.ligas[d].ids) { if (id === tec.clube) continue; const t = timePorId(id);
+    for (const j of t.jogadores) if ((!pos || j[1] === pos) && j[2] >= fmin && valorJog(j) <= max && (!nome || norm(j[0]).includes(nome))) lista.push([j, id, d]); } }
+  lista.sort((a, b) => b[0][2] - a[0][2]);
+  $("mc-lista").innerHTML = lista.slice(0, 80).map(([j, id, d]) => `<tr><td>${esc(j[0])}</td><td>${j[1]}</td><td>${j[3]}</td><td><b>${j[2]}</b></td><td>${escudo(timePorId(id))}${esc(nomeTime(id))} <span class="dica">${d}</span></td><td>${dinheiro(valorJog(j))}</td><td><button data-mc="${esc(id)}|${esc(j[0])}">Proposta</button></td></tr>`).join("") || "<tr><td colspan='7' class='dica'>Nenhum jogador com esses filtros.</td></tr>";
+  $("mc-rodape").textContent = lista.length > 80 ? `Mostrando os 80 mais fortes de ${lista.length}. Use os filtros para achar outros.` : `${lista.length} jogadores.`;
+}
+for (const id of ["mc-nome", "mc-pos", "mc-div", "mc-max", "mc-fmin"]) $(id).addEventListener("input", listarMercado);
+$("c-mercado").onclick = abrirMercado;
+let ALVO = null;
+$("mc-lista").onclick = e => {
+  const b = e.target.closest("[data-mc]"); if (!b) return;
+  const [id, nome] = b.dataset.mc.split("|"), j = timePorId(id).jogadores.find(x => x[0] === nome); if (!j) return;
+  ALVO = { id, nome, tentativas: 0 };
+  $("pr-tit").textContent = `Proposta por ${nome}`;
+  $("pr-info").innerHTML = `${j[1]} · ${j[3]} anos · força <b>${j[2]}</b> · ${esc(nomeTime(id))}<br>Valor de mercado: <b>${dinheiro(valorJog(j))}</b> · salário por rodada: ${dinheiro(salarioJog(j))}<br>Seu caixa: ${dinheiro(fin(T().clube).caixa)}`;
+  $("pr-valor").value = String(valorJog(j)).replace(".", ","); $("pr-msg").textContent = ""; $("pr-enviar").disabled = false;
+  $("m-prop").classList.add("on");
+};
+$("pr-fechar").onclick = () => { $("m-prop").classList.remove("on"); listarMercado(); };
+$("pr-enviar").onclick = () => {
+  const tec = T(), t = timePorId(ALVO.id), j = t.jogadores.find(x => x[0] === ALVO.nome); if (!j) return;
+  const oferta = parseFloat(String($("pr-valor").value).replace(",", "."));
+  if (!(oferta > 0)) return ($("pr-msg").textContent = "Digite um valor.");
+  if (oferta > fin(tec.clube).caixa) return ($("pr-msg").textContent = "Você não tem esse dinheiro em caixa.");
+  if (ALVO.tentativas >= 3) return ($("pr-msg").textContent = `O ${t.nome} cansou de negociar. Tente na próxima rodada.`);
+  ALVO.tentativas++;
+  const titular = t.jogadores.slice().sort((a, b) => b[2] - a[2]).slice(0, 11).includes(j);
+  const chance = Math.max(0, Math.min(1, (oferta / valorJog(j) - 0.85) / 0.5)) * (titular ? 0.7 : 1);
+  if (Math.random() > chance) { $("pr-msg").textContent = `❌ O ${t.nome} recusou. ${oferta < valorJog(j) ? "Pedem pelo menos o valor de mercado." : "Talvez com um pouco mais."}`; return; }
+  const divJ = DIVS.indexOf(divDe(ALVO.id)), divEu = DIVS.indexOf(divDe(tec.clube));
+  if (divEu > divJ && Math.random() < 0.5) { $("pr-msg").textContent = `❌ O clube aceitou, mas ${j[0]} não quer jogar numa divisão abaixo.`; return; }
+  const r = transferir(j[0], ALVO.id, tec.clube, oferta); if (r) return ($("pr-msg").textContent = "❌ " + r);
+  tec.avisos.push(`✍ ${j[0]} contratado do ${t.nome} por ${dinheiro(oferta)}.`); salvar();
+  $("pr-msg").textContent = `✅ Negócio fechado! ${j[0]} é do ${nomeTime(tec.clube)}.`; $("pr-enviar").disabled = true;
 };
 
 /* ---------- menu ---------- */
