@@ -58,6 +58,7 @@
   .stat .r span { position: absolute; inset: 0; text-align: center; font-size: 12px; line-height: 18px; color: #e8efe9; }
   /* janela do campo */
   #mc-lista td, #el-lista td { white-space: nowrap; }
+  .grupos-lib { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; } .grupos-lib h3 { margin: 6px 0 2px; }
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; z-index: 10; padding: 10px; }
   .modal.on { display: flex; }
   .modal .janela { background: var(--painel); border: 1px solid var(--borda); border-radius: 14px; padding: 10px; width: min(980px, 100%); max-height: 100%; overflow: auto; }
@@ -193,7 +194,8 @@
         <div class="caixa" style="margin-top:12px"><h2>Diretoria</h2><div id="c-dir"></div></div>
       </div>
       <div class="caixa"><div class="abas" id="c-abas"></div><table class="tab"><thead><tr><th>#</th><th>Clube</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr></thead><tbody id="c-tab"></tbody></table>
-        <p class="dica"><span style="color:var(--verde)">▌</span> sobem · <span style="color:var(--verm)">▌</span> caem</p></div>
+        <p class="dica"><span style="color:var(--verde)">▌</span> sobem · <span style="color:var(--verm)">▌</span> caem</p>
+        <div id="c-comp-box" style="margin-top:14px"><h2>🏆 Copas e estaduais</h2><select id="c-comp-sel"></select><div id="c-comp"></div></div></div>
     </div>
     <p><button id="c-salvar">💾 Salvar</button> <button data-tela="menu">↩ Menu</button></p>
   </section>
@@ -898,7 +900,7 @@ let ESC_SALVAR = false;
 
 /* ===================== controles ===================== */
 function popular() {
-  const grupos = {}; for (const t of TIMES) (grupos[t.div || "Exemplo"] ||= []).push(t);
+  const grupos = {}; for (const t of TIMES) if (t.div !== "Estaduais") (grupos[t.div || "Exemplo"] ||= []).push(t);
   const op = Object.entries(grupos).map(([g, l]) => `<optgroup label="${esc(g)}">${l.sort((a, b) => a.nome.localeCompare(b.nome)).map(t => `<option value="${t.id}">${esc(t.nome)}${t.real === false ? " *" : ""}</option>`).join("")}</optgroup>`).join("");
   $("sel-meu").innerHTML = op; $("sel-adv").innerHTML = op; $("sel-adv").selectedIndex = 1;
   $("sel-form").innerHTML = Object.keys(FORMACOES).map(f => `<option>${f}</option>`).join(""); $("sel-form").value = "4-3-3";
@@ -1077,6 +1079,7 @@ function novaCarreira(novos, temporada) {
   C.tecnicos = novos.map(n => { const div = divDe(n.clube);
     return { nome: n.nome, nac: n.nac, clube: n.clube, div, nivel: DIVS.indexOf(div), conf: 60, demitido: false, propostas: [], historico: [], tatica: null, titulos: [],
       avisos: [`Bem-vindo, ${n.nome}! A diretoria do ${nomeTime(n.clube)} espera ${metaDiretoria(div, n.clube)}.`] }; });
+  iniciarTemporadaComps();
   salvar(); abrirCarreira();
 }
 function ordenar(liga) { return Object.keys(liga.tab).sort((a, b) => { const x = liga.tab[a], y = liga.tab[b]; return y.P - x.P || y.V - x.V || (y.GP - y.GC) - (x.GP - x.GC) || y.GP - x.GP || nomeTime(a).localeCompare(nomeTime(b)); }); }
@@ -1096,7 +1099,6 @@ function registrar(liga, casa, fora, gc, gf) {
   a.J++; b.J++; a.GP += gc; a.GC += gf; b.GP += gf; b.GC += gc;
   if (gc > gf) { a.V++; a.P += 3; b.D++; } else if (gc < gf) { b.V++; b.P += 3; a.D++; } else { a.E++; b.E++; a.P++; b.P++; }
 }
-const jogoDe = tec => tec.demitido ? null : (C.ligas[tec.div].cal[C.rodada] || []).find(j => j.includes(tec.clube));
 const chaveJogo = ([a, b]) => a + "|" + b;
 function proximoDaVez() {                                // passa a vez; quando todos decidiram, a rodada acontece
   let k = C.vez + 1;
@@ -1104,20 +1106,6 @@ function proximoDaVez() {                                // passa a vez; quando 
   if (k >= C.tecnicos.length) { C.vez = 0; jogarRodada(); } else { C.vez = k; salvar(); abrirCarreira(); }
 }
 function decidirMeuJogo(placar) { const j = jogoDe(T()); if (j) C.pend[chaveJogo(j)] = placar || placarSimulado(j[0], j[1]); proximoDaVez(); }
-function jogarRodada() {
-  const r = C.rodada; C.ultimos = [];
-  const humanos = new Set(C.tecnicos.filter(t => !t.demitido).map(t => t.clube));
-  for (const d of DIVS) for (const [casa, fora] of C.ligas[d].cal[r] || []) {
-    const [gc, gf] = C.pend[casa + "|" + fora] || placarSimulado(casa, fora);
-    registrar(C.ligas[d], casa, fora, gc, gf);
-    C.ultimos.push([casa, fora, gc, gf, d]);
-    for (const tec of C.tecnicos) if (!tec.demitido && (tec.clube === casa || tec.clube === fora)) avaliarDiretoria(tec, casa, fora, gc, gf);
-  }
-  C.pend = {}; C.rodada++;
-  for (const tec of C.tecnicos) if (tec.demitido && !tec.propostas.length && rnd() < .6) tec.propostas = gerarPropostas(tec);
-  if (C.rodada >= C.ligas.A.cal.length) fimDaTemporada();
-  C.vez = 0; salvar(); abrirCarreira();
-}
 function avaliarDiretoria(tec, casa, fora, gc, gf) {
   const eu = tec.clube === casa, saldo = eu ? gc - gf : gf - gc, liga = C.ligas[tec.div], pos = posicao(liga, tec.clube), meta = metaDiretoria(tec.div, tec.clube);
   const esperado = /título|acesso/.test(meta) ? 4 : /meio/.test(meta) ? 10 : 16;
@@ -1195,11 +1183,13 @@ function abrirCarreira() {
       `<p class="dica">Pelo seu nível (${NUM_DIV[DIVS[tec.nivel]]} divisão), você recebe propostas dessa divisão ou de divisões abaixo.</p>`;
     $("c-simular").textContent = "⏭ Esperar a próxima rodada";
   } else if (j) {
-    const [casa, fora] = j; $("c-prox-tit").textContent = `Próximo jogo — rodada ${C.rodada + 1}`;
-    $("c-prox").innerHTML = `<div class="prox"><span>${escudo(timePorId(casa))}<br>${esc(nomeTime(casa))}</span><span>${decidido ? `${decidido[0]} × ${decidido[1]}` : "×"}</span><span>${escudo(timePorId(fora))}<br>${esc(nomeTime(fora))}</span></div><p class="dica" style="text-align:center">${decidido ? "Jogo já disputado pelo outro técnico." : `${casa === tec.clube ? "Em casa" : "Fora de casa"} · adversário em ${posicao(liga, casa === tec.clube ? fora : casa)}º`}</p>`;
+    const [casa, fora] = j, info = j.info || {}; $("c-prox-tit").textContent = `Próximo jogo — ${info.nome || "rodada " + (C.rodada + 1)}`;
+    $("c-prox").innerHTML = `<div class="prox"><span>${escudo(timePorId(casa))}<br>${esc(nomeTime(casa))}</span><span>${decidido ? `${decidido[0]} × ${decidido[1]}` : "×"}</span><span>${escudo(timePorId(fora))}<br>${esc(nomeTime(fora))}</span></div><p class="dica" style="text-align:center">${decidido ? "Jogo já disputado pelo outro técnico." : `${casa === tec.clube ? "Em casa" : "Fora de casa"} · ${info.d ? `adversário em ${posicao(liga, casa === tec.clube ? fora : casa)}º` : `adversário: força ${forcaTime(timePorId(casa === tec.clube ? fora : casa)).toFixed(0)}${info.ko ? " · mata-mata: empate vai para os pênaltis" : ""}`}`}</p>`;
     $("c-simular").textContent = decidido ? "➡ Continuar" : "⏭ Simular o jogo";
   } else { $("c-prox-tit").textContent = "Rodada de folga"; $("c-prox").innerHTML = ""; $("c-simular").textContent = "⏭ Próxima rodada"; }
-  $("c-res").innerHTML = (C.ultimos || []).filter(r => r[4] === tec.div).map(([a, b, x, y]) => { const meu = a === tec.clube || b === tec.clube; return `<div>${meu ? "<b>" : ""}${esc(nomeTime(a))} ${x} × ${y} ${esc(nomeTime(b))}${meu ? "</b>" : ""}</div>`; }).join("") || "<p class='dica'>A temporada ainda não começou.</p>";
+  const ult = C.ultimos || [], meus = new Set(ult.filter(r => r[0] === tec.clube || r[1] === tec.clube).map(r => r[4] + "|" + r[5]));
+  const grupos = {}; for (const r of ult) if (r[4] === tec.div || meus.has(r[4] + "|" + r[5])) (grupos[r[5] || NOME_DIV[r[4]]] ||= []).push(r);
+  $("c-res").innerHTML = Object.entries(grupos).map(([nome, l]) => `<h3>${esc(nome)}</h3>` + l.map(([a, b, x, y, , , p]) => { const meu = a === tec.clube || b === tec.clube; return `<div>${meu ? "<b>" : ""}${esc(nomeTime(a))} ${x} × ${y} ${esc(nomeTime(b))}${p ? ` <span class="dica">(pên. ${p[0]}–${p[1]})</span>` : ""}${meu ? "</b>" : ""}</div>`; }).join("")).join("") || "<p class='dica'>A temporada ainda não começou.</p>";
   $("c-dir").innerHTML = (tec.demitido ? "" : `<p>Meta: <b>${metaDiretoria(tec.div, tec.clube)}</b>.</p>`) + tec.avisos.map(a => `<p>${esc(a)}</p>`).join("") + (tec.historico.length ? `<p class="dica">Últimos jogos: ${tec.historico.slice(0, 5).map(esc).join(" · ")}</p>` : "");
   if (!ABA_TAB || C._abaDe !== C.vez) { ABA_TAB = tec.div; C._abaDe = C.vez; }
   $("c-abas").innerHTML = DIVS.map(d => `<button data-tab="${d}" class="${d === ABA_TAB ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
@@ -1252,9 +1242,291 @@ $("m-salvo").onclick = () => {
   PAIS = s.pais || "Brasil"; paises();
   if (s.tecnicos.some(t => !timePorId(t.clube))) return alert("Um clube deste jogo salvo não está no pacote de times atual.");
   for (const [id, j] of Object.entries(s.elencos || {})) if (timePorId(id) && j) timePorId(id).jogadores = j;
-  delete s.elencos; C = s; ABA_TAB = null; abrirCarreira();
+  delete s.elencos; C = s; ABA_TAB = null;
+  if (!C.agenda) { C.agenda = Array.from({ length: Math.max(0, C.ligas.A.cal.length - C.rodada) }, () => ({ t: "L" })); C.data = 0; C.comps = {}; }   // save antigo: copas a partir da próxima temporada
+  garantirExtras(); abrirCarreira();
 };
 
+
+
+/* =====================================================================
+   COMPETIÇÕES DA TEMPORADA: estaduais, regionais, Copa do Brasil,
+   Libertadores e Mundial, num calendário único de "datas".
+   Premiação em R$ milhões (valores de 2026 da CBF/Conmebol e da Fifa;
+   estaduais, regionais e Séries B–D são aproximados).
+   ===================================================================== */
+const USD = 5.15;
+const SIGLA_UF = { CAP:"PR", CAM:"MG", BAH:"BA", BOT:"RJ", CHA:"SC", COR:"SP", CFC:"PR", CRU:"MG", FLA:"RJ", FLU:"RJ", GRE:"RS", INT:"RS", MIR:"SP", PAL:"SP", RBB:"SP", REM:"PA", SAN:"SP", SAO:"SP", VAS:"RJ", VIT:"BA",
+  AME:"MG", ATH:"MG", ACG:"GO", AVA:"SC", BFS:"SP", CEA:"CE", CRB:"AL", CRI:"SC", CUI:"MT", FOR:"CE", GOI:"GO", JUV:"RS", LON:"PR", NAU:"PE", NOV:"SP", OPE:"PR", PON:"SP", SBE:"SP", SPT:"PE", VNO:"GO",
+  AMZ:"AM", ANA:"GO", BAR:"SC", BPB:"PB", BRU:"SC", CAX:"RS", CON:"SE", FER:"SP", FIG:"SC", FLO:"CE", GUA:"SP", INL:"SP", ITA:"SE", ITU:"SP", MAR:"MA", MGA:"PR", PAY:"PA", STC:"PE", VRE:"RJ", YPI:"RS" };
+const ESTADUAL = { SP:"Paulistão", RJ:"Carioca", MG:"Mineiro", RS:"Gauchão", PR:"Paranaense", SC:"Catarinense", BA:"Baiano", PE:"Pernambucano", CE:"Cearense", GO:"Goiano", PA:"Paraense", AM:"Amazonense",
+  AL:"Alagoano", SE:"Sergipano", PB:"Paraibano", MA:"Maranhense", MT:"Mato-Grossense", RN:"Potiguar", ES:"Capixaba", DF:"Candangão", PI:"Piauiense", MS:"Sul-Mato-Grossense", TO:"Tocantinense" };
+const UFS_SORTEIO = ["SP","RJ","MG","RS","PR","SC","BA","PE","CE","GO","PA","AM","AL","SE","PB","MA","MT","RN","ES","DF"];
+const REGIONAIS = { NE: { nome: "Copa do Nordeste", ufs: ["BA","PE","CE","AL","SE","PB","MA","RN","PI"], divs: "ABCD" },
+  VERDE: { nome: "Copa Verde", ufs: ["AM","PA","GO","MT","MS","DF","ES","TO","AC","AP","RO","RR"], divs: "ABCD" },
+  SULSE: { nome: "Copa Sul-Sudeste", ufs: ["SP","RJ","MG","RS","PR","SC"], divs: "CD" } };
+// clubes de fora (nomes reais, elencos gerados pelo jogo): [nome, sigla, cor, cor2, força base, país]
+const EXTERIOR = {
+  LIB: [["River Plate","RIV","#ffffff","#e30613",72,"Argentina"],["Boca Juniors","BOC","#0033a0","#ffd200",72,"Argentina"],["Racing","RAC","#6cace4","#ffffff",70,"Argentina"],["Estudiantes","EST","#e30613","#ffffff",69,"Argentina"],
+    ["Vélez Sarsfield","VEL","#ffffff","#0033a0",67,"Argentina"],["Talleres","TAL","#0033a0","#ffffff",66,"Argentina"],["Independiente","IND","#e30613","#ffffff",66,"Argentina"],["Rosario Central","ROS","#0033a0","#ffd200",66,"Argentina"],
+    ["Peñarol","PEN","#ffd200","#111111",66,"Uruguai"],["Nacional","NAC","#ffffff","#0033a0",66,"Uruguai"],["Colo-Colo","COL","#ffffff","#111111",64,"Chile"],["Universidad de Chile","UCH","#0033a0","#e30613",64,"Chile"],
+    ["Universidad Católica","UCA","#ffffff","#0057a8",63,"Chile"],["Atlético Nacional","ATN","#00843d","#ffffff",65,"Colômbia"],["Millonarios","MIL","#0033a0","#ffffff",63,"Colômbia"],["Junior Barranquilla","JUN","#e30613","#ffffff",63,"Colômbia"],
+    ["LDU Quito","LDU","#ffffff","#0033a0",66,"Equador"],["Independiente del Valle","IDV","#111111","#0057a8",66,"Equador"],["Barcelona SC","BSC","#ffd200","#111111",63,"Equador"],["Olimpia","OLI","#ffffff","#111111",63,"Paraguai"],
+    ["Cerro Porteño","CER","#0033a0","#e30613",63,"Paraguai"],["Libertad","LBT","#111111","#ffffff",62,"Paraguai"],["Universitario","UNI","#f2e8c9","#7a0a2a",61,"Peru"],["Sporting Cristal","SCR","#6cace4","#ffffff",61,"Peru"],["Bolívar","BOL","#6cace4","#ffffff",60,"Bolívia"]],
+  CONCACAF: [["Cruz Azul","CAZ","#0033a0","#ffffff",70,"México"],["Monterrey","MTY","#0a2240","#ffffff",71,"México"],["Toluca","TOL","#e30613","#ffffff",70,"México"],["Club América","CLA","#ffd200","#0a2240",71,"México"]],
+  DESAFIO: [["Pyramids","PYR","#0a2240","#ffffff",68,"Egito"],["Al-Ahly","AHY","#e30613","#ffffff",70,"Egito"],["Al-Hilal","HIL","#0057a8","#ffffff",73,"Arábia Saudita"],["Al-Ahli","AHL","#00843d","#ffffff",72,"Arábia Saudita"]],
+  EUROPA: [["Real Madrid","RMA","#ffffff","#ffd200",85,"Espanha"],["Paris Saint-Germain","PSG","#0a2240","#e30613",85,"França"],["Liverpool","LIV","#c8102e","#ffffff",84,"Inglaterra"],["Barcelona","FCB","#a50044","#004d98",84,"Espanha"],
+    ["Bayern de Munique","BAY","#dc052d","#ffffff",84,"Alemanha"],["Manchester City","MCI","#6cabdd","#ffffff",84,"Inglaterra"],["Inter de Milão","INM","#0068a8","#111111",83,"Itália"],["Chelsea","CHE","#034694","#ffffff",83,"Inglaterra"]] };
+const NOMES_ES = { p: ["Santiago","Matías","Nicolás","Facundo","Agustín","Lucas","Joaquín","Franco","Tomás","Juan","Diego","Andrés","Sebastián","Emiliano","Gonzalo","Rodrigo","Lautaro","Bruno"],
+  s: ["González","Rodríguez","Fernández","López","Martínez","Pérez","Gómez","Díaz","Sánchez","Romero","Álvarez","Torres","Ruiz","Ramírez","Flores","Acosta","Medina","Herrera"] };
+const NOMES_EU = { p: ["Luca","Marco","Thomas","Jonas","Kevin","Ousmane","Pierre","Jamal","Harry","Leon","Alejandro","Pablo","Kai","Declan","Rafael","Nico","Federico","Achraf"],
+  s: ["Müller","Martin","Dubois","Rossi","Bianchi","Walker","Smith","Schmidt","Moreno","Navarro","Silva","Kane","Bernard","Weber","Ricci","Leroy","Hoffmann","Fofana"] };
+const hashN = s => { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
+function ufDe(id) { const t = timePorId(id); if (t?.uf) return t.uf; if (t && !t.gerado && SIGLA_UF[t.curto]) return SIGLA_UF[t.curto]; return UFS_SORTEIO[hashN(id) % UFS_SORTEIO.length]; }
+
+function gerarTime(id, nome, curto, cor, cor2, base, div, pais, nomes, extra) {
+  const r = semente("gt" + id), pos = [..."GGG", ..."DDDDDDDD", ..."MMMMMMMM", ..."AAAAA"], mapa = { D: ["ZAG","LD","LE","ZAG"], M: ["VOL","MC","MEI","MC"], A: ["CA","PE","PD"] };
+  const N = nomes || { p: PRIMEIROS, s: SOBRENOMES };
+  const jogadores = pos.map((c, k) => [`${N.p[Math.floor(r() * N.p.length)]} ${N.s[Math.floor(r() * N.s.length)]}`, c === "G" ? "GOL" : mapa[c][k % mapa[c].length],
+    Math.round(Math.max(38, Math.min(92, base + (r() * 12 - 6) + (k % 8 < 4 ? 2 : -1)))), 18 + Math.floor(r() * 16)]);
+  return { id, nome, curto, cor, cor2, div, pais, gerado: true, extra: true, jogadores, ...extra };
+}
+// times extras são recriados só pelo id (não precisam ir no save)
+function criarExtra(id) {
+  if (timePorId(id)) return timePorId(id);
+  let t = null, m;
+  if ((m = id.match(/^e_([A-Z]{2})_(\d+)$/))) {
+    const [, uf, i] = m, r = semente("ex" + id), cores = ["#c8102e","#0057a8","#00843d","#111111","#ffd200","#7a0a2a","#e86a10","#5b2a86","#00a3e0","#ffffff"];
+    const cid = CIDADES[(hashN(uf) + Number(i) * 5) % CIDADES.length], c1 = cores[Math.floor(r() * cores.length)]; let c2 = cores[Math.floor(r() * cores.length)]; if (c2 === c1) c2 = c1 === "#ffffff" ? "#111111" : "#ffffff";
+    t = gerarTime(id, `${PREFIXOS[(hashN(id)) % PREFIXOS.length]} ${cid}-${uf}`, cid.slice(0, 3).toUpperCase(), c1, c2, 47 + Math.round(r() * 7), "Estaduais", "Brasil", null, { uf, real: false });
+  } else if ((m = id.match(/^x_(\w+)$/))) {
+    for (const [grupo, lista] of Object.entries(EXTERIOR)) for (const [nome, sg, c1, c2, base, pais] of lista) if (sg.toLowerCase() === m[1])
+      t = gerarTime(id, nome, sg, c1, c2, base, "Exterior", pais, grupo === "EUROPA" || grupo === "DESAFIO" ? NOMES_EU : NOMES_ES);
+  }
+  if (t) TIMES.push(t);
+  return t;
+}
+const idExterior = linha => "x_" + linha[1].toLowerCase();
+function idsDasComps(o, acc = new Set()) { if (typeof o === "string") { if (/^(e_|x_)/.test(o)) acc.add(o); } else if (o && typeof o === "object") for (const v of Object.values(o)) idsDasComps(v, acc); return acc; }
+const garantirExtras = () => { for (const id of idsDasComps(C?.comps)) criarExtra(id); };
+
+/* ---------- mata-mata genérico (jogo único; empate → pênaltis) ---------- */
+function sortearPares(ids) { const l = [...ids].sort(() => Math.random() - .5), p = []; for (let i = 0; i + 1 < l.length; i += 2) p.push([l[i], l[i + 1]]); return { pares: p, folga: l.length % 2 ? l[l.length - 1] : null }; }
+function novoMata(nome, ids, fases, opc = {}) { const m = { nome, vivos: ids, fase: 0, fases, jogos: [], folga: null, hist: [], campeao: null, entram: opc.entram || {}, premios: opc.premios || null }; prepararFase(m, opc.jogos); return m; }
+function prepararFase(m, fixos) {
+  if (m.entram[m.fase]) m.vivos = [...m.vivos, ...m.entram[m.fase]];
+  if (fixos) { m.jogos = fixos; m.folga = null; } else { const s = sortearPares(m.vivos); m.jogos = s.pares; m.folga = s.folga; }
+}
+function penaltis() { let a = 0, b = 0; for (let i = 0; i < 5; i++) { a += rnd() < .76; b += rnd() < .76; } while (a === b) { a += rnd() < .76; b += rnd() < .76; } return [a, b]; }
+
+/* ---------- montar a temporada ---------- */
+function montarEstaduais() {
+  const porUF = {};
+  for (const d of DIVS) for (const id of C.ligas[d].ids) (porUF[ufDe(id)] ||= []).push([id, DIVS.indexOf(d)]);
+  const est = {};
+  for (const [uf, l] of Object.entries(porUF)) {
+    const ids = l.sort((a, b) => a[1] - b[1] || forcaTime(timePorId(b[0])) - forcaTime(timePorId(a[0]))).slice(0, 8).map(x => x[0]);
+    for (let i = 0; ids.length < 8; i++) { const id = `e_${uf}_${i}`; criarExtra(id); ids.push(id); }
+    est[uf] = { nome: ESTADUAL[uf] || `Estadual ${uf}`, uf, ids, cal: calendario(ids).slice(0, 7), tab: tabela(ids), mata: null };
+  }
+  return est;
+}
+function enchimento(ufs, usados, n) {                     // clubes locais para completar uma copa
+  const out = []; let i = 0;
+  while (out.length < n && i < 400) { const uf = ufs[i % ufs.length], id = `e_${uf}_${Math.floor(i / ufs.length)}`; i++; if (usados.has(id)) continue; criarExtra(id); usados.add(id); out.push(id); }
+  return out;
+}
+function montarComps(lib) {
+  const comps = { est: montarEstaduais(), reg: {} };
+  const extrasEst = Object.values(comps.est).flatMap(e => e.ids.filter(id => id.startsWith("e_")));
+  for (const [k, R] of Object.entries(REGIONAIS)) {
+    const ids = DIVS.filter(d => R.divs.includes(d)).flatMap(d => C.ligas[d].ids).filter(id => R.ufs.includes(ufDe(id)))
+      .sort((a, b) => forcaTime(timePorId(b)) - forcaTime(timePorId(a))).slice(0, 16);
+    const usados = new Set(ids); ids.push(...extrasEst.filter(id => R.ufs.includes(timePorId(id).uf)).slice(0, 16 - ids.length)); ids.forEach(x => usados.add(x));
+    ids.push(...enchimento(R.ufs, usados, 16 - ids.length));
+    comps.reg[k] = novoMata(R.nome, ids, ["Oitavas", "Quartas", "Semifinal", "Final"], { premios: "REG" });
+  }
+  const baixo = [...C.ligas.B.ids, ...C.ligas.C.ids, ...C.ligas.D.ids], usados = new Set(baixo);
+  const cb = [...baixo, ...extrasEst.filter(x => !usados.has(x)).slice(0, 96 - baixo.length)]; cb.forEach(x => usados.add(x));
+  cb.push(...enchimento(UFS_SORTEIO, usados, 96 - cb.length));
+  comps.cb = novoMata("Copa do Brasil", cb, ["1ª fase", "2ª fase", "3ª fase", "4ª fase", "Oitavas", "Quartas", "Semifinal", "Final"], { entram: { 3: [...C.ligas.A.ids] }, premios: "CB" });
+  // Libertadores: 7 brasileiros + 25 sul-americanos em 8 grupos de 4
+  const br = (lib || []).filter(id => timePorId(id)).slice(0, 7);
+  for (const id of C.ligas.A.ids.slice().sort((a, b) => forcaTime(timePorId(b)) - forcaTime(timePorId(a)))) if (br.length < 7 && !br.includes(id)) br.push(id);
+  const fora = EXTERIOR.LIB.map(l => { const id = idExterior(l); criarExtra(id); return id; }).sort(() => Math.random() - .5);
+  const grupos = Array.from({ length: 8 }, () => []);
+  br.forEach((id, i) => grupos[i].push(id)); let g = 7; for (const id of fora) { while (grupos[g % 8].length >= 4) g++; grupos[g % 8].push(id); g++; }
+  comps.lib = { nome: "Libertadores", grupos: grupos.map((ids, i) => ({ nome: "Grupo " + "ABCDEFGH"[i], ids, cal: calendario(ids), tab: tabela(ids) })), mata: null };
+  comps.mun = null;
+  return comps;
+}
+function montarAgenda(nL) {
+  const A = [], extra = { 2: [{ t: "LIB", r: 0 }], 3: [{ t: "CB" }], 4: [{ t: "LIB", r: 1 }], 5: [{ t: "REG" }], 6: [{ t: "LIB", r: 2 }], 8: [{ t: "LIB", r: 3 }], 9: [{ t: "REG" }], 10: [{ t: "LIB", r: 4 }], 12: [{ t: "LIB", r: 5 }],
+    13: [{ t: "REG" }], 14: [{ t: "CB" }], 16: [{ t: "LIB", r: "KO" }], 18: [{ t: "CB" }], 20: [{ t: "LIB", r: "KO" }], 24: [{ t: "CB" }], 26: [{ t: "LIB", r: "KO" }], 32: [{ t: "CB" }], 34: [{ t: "LIB", r: "KO" }] };
+  for (let r = 0; r < 7; r++) { A.push({ t: "EST", r }); if (r % 2 === 1) A.push({ t: "CB" }); }
+  A.push({ t: "EST", r: "KO" }, { t: "EST", r: "KO" }, { t: "REG" });
+  const escala = 38 / nL;
+  const extras = Object.entries(extra).map(([l, e]) => [Math.max(1, Math.round(l / escala)), e]);
+  for (let l = 1; l <= nL; l++) { A.push({ t: "L" }); for (const [k, e] of extras) if (k === l) A.push(...e); }
+  A.push({ t: "MUN" }, { t: "MUN" }, { t: "MUN" });
+  return A;
+}
+function iniciarTemporadaComps() { C.comps = montarComps(C.proxLib); C.agenda = montarAgenda(C.ligas.A.cal.length); C.data = 0; C.premiosTemp = {}; }
+
+/* ---------- jogos de cada data ---------- */
+function jogosDaData(ev) {
+  const J = [], K = C.comps || {};
+  const add = (comp, nome, casa, fora, ko, extra = {}) => J.push({ comp, nome, casa, fora, ko, ...extra });
+  if (!ev) return J;
+  if (ev.t === "L") for (const d of DIVS) for (const [a, b] of C.ligas[d].cal[C.rodada] || []) add("L", NOME_DIV[d] + " · rodada " + (C.rodada + 1), a, b, false, { d });
+  if (ev.t === "EST") for (const e of Object.values(K.est || {})) {
+    if (ev.r === "KO") { if (e.mata && !e.mata.campeao) for (const [a, b] of e.mata.jogos) add("EST:" + e.uf, `${e.nome} · ${e.mata.fases[e.mata.fase]}`, a, b, true); }
+    else for (const [a, b] of e.cal[ev.r] || []) add("EST:" + e.uf, `${e.nome} · rodada ${ev.r + 1}`, a, b, false);
+  }
+  const mata = (k, m) => { if (m && !m.campeao) for (const [a, b] of m.jogos) add(k, `${m.nome} · ${m.fases[m.fase]}`, a, b, true); };
+  if (ev.t === "CB") mata("CB", K.cb);
+  if (ev.t === "REG") for (const [k, m] of Object.entries(K.reg || {})) mata("REG:" + k, m);
+  if (ev.t === "MUN") mata("MUN", K.mun);
+  if (ev.t === "LIB" && K.lib) { if (ev.r === "KO") mata("LIB", K.lib.mata); else K.lib.grupos.forEach(g => (g.cal[ev.r] || []).forEach(([a, b]) => add("LIB", `Libertadores · ${g.nome}, rodada ${ev.r + 1}`, a, b, false, { grupo: g }))); }
+  return J;
+}
+const dataAtual = () => C.agenda?.[C.data];
+const humanosAtivos = () => C.tecnicos.filter(t => !t.demitido);
+var jogoDe = tec => { if (tec.demitido) return null; const m = jogosDaData(dataAtual()).find(x => x.casa === tec.clube || x.fora === tec.clube); if (!m) return null; const j = [m.casa, m.fora]; j.info = m; return j; };
+
+/* ---------- premiação ---------- */
+const PREMIO_CB = (fase, id) => { const grupoB = C.ligas.B.ids.includes(id); return [grupoB ? 1.38 : .83, grupoB ? 1.53 : .95, grupoB ? 1.68 : 1.07, 2, 3, 4.5, 9][fase] || 0; };
+const PREMIO_FASE = { CB: PREMIO_CB, REG: f => [.3, .5, 1][f] || 0, LIB: f => [1.25 * USD, 1.7 * USD, 2.3 * USD][f] || 0 };
+const PREMIO_FINAL = { CB: [78, 34], REG: [4, 2], LIB: [25 * USD, 7 * USD], EST: [3, 1.5], MUN: [5 * USD, 4 * USD] };
+const PREMIO_LIGA = { A: i => i < 16 ? 48.1 - i * (31.8 / 15) : 0, B: i => i < 16 ? 4 - i * .22 : 0, C: i => i < 16 ? 1.5 - i * .08 : 0, D: i => i < 16 ? .6 - i * .03 : 0 };
+function tecDe(id) { return C.tecnicos.find(t => !t.demitido && t.clube === id); }
+function premiar(id, valor, motivo) {
+  const tec = tecDe(id); if (!tec || !(valor > 0)) return;
+  const f = fin(id); f.caixa = Math.round((f.caixa + valor) * 100) / 100;
+  (f.premios ||= []).unshift(`${C.temporada} · ${motivo}: ${dinheiro(valor)}`); f.premios = f.premios.slice(0, 30);
+  (C.avisosData[tec.nome] ||= []).push(`💰 ${motivo}: ${dinheiro(valor)}`);
+}
+function titulo(id, nome) { const tec = tecDe(id); if (!tec) return; tec.titulos.push(`${nome} ${C.temporada}`); tec.conf = Math.min(100, tec.conf + 15); (C.avisosData[tec.nome] ||= []).push(`🏆 CAMPEÃO: ${nome} ${C.temporada}!`); }
+function avisoCopa(id, txt) { const tec = tecDe(id); if (tec) (C.avisosData[tec.nome] ||= []).push(txt); }
+
+function avancarMata(m, jogos, tipo) {
+  const fase = m.fases[m.fase], fim = m.fase === m.fases.length - 1, vence = [];
+  for (const j of jogos) {
+    vence.push(j.venc); const perde = j.venc === j.casa ? j.fora : j.casa;
+    if (fim) { premiar(j.venc, PREMIO_FINAL[tipo]?.[0], `${m.nome}: campeão`); premiar(perde, PREMIO_FINAL[tipo]?.[1], `${m.nome}: vice`); }
+    else { for (const id of [j.casa, j.fora]) premiar(id, PREMIO_FASE[tipo]?.(m.fase, id), `${m.nome}: ${fase}`);
+      avisoCopa(j.venc, `✅ ${nomeTime(j.venc)} passou de fase na ${m.nome} (${fase}).`); avisoCopa(perde, `❌ ${nomeTime(perde)} foi eliminado da ${m.nome} (${fase}).`);
+      const tp = tecDe(perde); if (tp) tp.conf = Math.max(0, tp.conf - 3); const tv = tecDe(j.venc); if (tv) tv.conf = Math.min(100, tv.conf + 2); }
+  }
+  m.hist.push({ fase, jogos: jogos.map(j => [j.casa, j.fora, j.gc, j.gf, j.pen]), folga: m.folga });
+  if (m.folga) vence.push(m.folga);
+  m.vivos = vence; m.fase++;
+  if (fim || m.fase >= m.fases.length) { m.campeao = vence[0]; m.jogos = []; titulo(m.campeao, m.nome); return; }
+  prepararFase(m);
+}
+function premioMundialEliminado(m, j) { const perde = j.venc === j.casa ? j.fora : j.casa; premiar(perde, [1, 2][m.fase] * USD, `Mundial: eliminado (${m.fases[m.fase]})`); }
+
+/* ---------- jogar uma data ---------- */
+function resolverData(ev) {
+  const jogos = jogosDaData(ev), K = C.comps || {};
+  for (const m of jogos) {
+    const [gc, gf] = C.pend[m.casa + "|" + m.fora] || placarSimulado(m.casa, m.fora);
+    m.gc = gc; m.gf = gf; m.pen = m.ko && gc === gf ? penaltis() : null;
+    m.venc = gc > gf || (m.pen && m.pen[0] > m.pen[1]) ? m.casa : gc < gf || m.pen ? m.fora : null;
+    C.ultimos.push([m.casa, m.fora, gc, gf, m.d || m.comp, m.nome, m.pen]);
+    if (!m.d) for (const tec of humanosAtivos()) if (tec.clube === m.casa || tec.clube === m.fora) { const txt = `${nomeTime(m.casa)} ${gc} × ${gf} ${nomeTime(m.fora)}${m.pen ? ` (pên. ${m.pen[0]}–${m.pen[1]})` : ""} — ${m.nome}`; tec.historico.unshift(txt); tec.historico = tec.historico.slice(0, 10); }
+  }
+  if (ev.t === "L") {
+    for (const m of jogos) { registrar(C.ligas[m.d], m.casa, m.fora, m.gc, m.gf); for (const tec of C.tecnicos) if (!tec.demitido && (tec.clube === m.casa || tec.clube === m.fora)) avaliarDiretoria(tec, m.casa, m.fora, m.gc, m.gf); }
+    C.rodada++;
+    for (const tec of C.tecnicos) if (tec.demitido && !tec.propostas.length && rnd() < .6) tec.propostas = gerarPropostas(tec);
+  }
+  if (ev.t === "EST") {
+    if (ev.r === "KO") for (const e of Object.values(K.est)) { const js = jogos.filter(m => m.comp === "EST:" + e.uf); if (js.length) avancarMata(e.mata, js, "EST"); }
+    else { for (const m of jogos) registrar(K.est[m.comp.slice(4)], m.casa, m.fora, m.gc, m.gf);
+      if (ev.r === 6) for (const e of Object.values(K.est)) { const o = ordenar(e); e.mata = novoMata(e.nome, o.slice(0, 4), ["Semifinal", "Final"], { jogos: [[o[0], o[3]], [o[1], o[2]]] }); } }
+  }
+  if (ev.t === "CB" && K.cb) avancarMata(K.cb, jogos, "CB");
+  if (ev.t === "REG") for (const [k, m] of Object.entries(K.reg)) avancarMata(m, jogos.filter(j => j.comp === "REG:" + k), "REG");
+  if (ev.t === "LIB" && K.lib) {
+    if (ev.r === "KO") { avancarMata(K.lib.mata, jogos, "LIB");
+      if (K.lib.mata.campeao) { const ex = l => idExterior(sorteia(l)), c = ex(EXTERIOR.CONCACAF), d = ex(EXTERIOR.DESAFIO), e = ex(EXTERIOR.EUROPA); [c, d, e].forEach(criarExtra);
+        K.mun = novoMata("Mundial de Clubes", [K.lib.mata.campeao, c], ["Dérbi das Américas", "Desafio", "Final"], { entram: { 1: [d], 2: [e] }, jogos: [[K.lib.mata.campeao, c]] }); } }
+    else { for (const m of jogos) { registrar(m.grupo, m.casa, m.fora, m.gc, m.gf); premiar(m.casa, 1 * USD, "Libertadores: jogo em casa na fase de grupos"); if (m.venc) premiar(m.venc, .34 * USD, "Libertadores: vitória na fase de grupos"); }
+      if (ev.r === 5) { const o = K.lib.grupos.map(g => ordenar(g)); for (const g of K.lib.grupos) for (const id of ordenar(g).slice(2)) avisoCopa(id, `❌ ${nomeTime(id)} caiu na fase de grupos da Libertadores.`);
+        K.lib.mata = novoMata("Libertadores", o.flatMap(x => x.slice(0, 2)), ["Oitavas", "Quartas", "Semifinal", "Final"], { premios: "LIB", jogos: o.map((x, i) => [x[0], o[(i + 1) % 8][1]]) }); } }
+  }
+  if (ev.t === "MUN" && K.mun) { for (const j of jogos) if (K.mun.fase < 2) premioMundialEliminado(K.mun, j); avancarMata(K.mun, jogos, "MUN"); }
+  financasDaData(ev, jogos);
+  C.pend = {};
+}
+const temHumano = ev => jogosDaData(ev).some(m => humanosAtivos().some(t => t.clube === m.casa || t.clube === m.fora));
+var jogarRodada = function () {
+  C.ultimos = []; C.avisosData = {}; C.ciclo = (C.ciclo || 0) + 1;
+  for (const tec of C.tecnicos) if (tec.demitido) tec.avisos = tec.avisos.slice(0, 1);
+  do {
+    if (dataAtual()) resolverData(dataAtual()); C.data++;
+    if (C.data >= C.agenda.length) { encerrarTemporada(); break; }
+  } while (dataAtual().t !== "L" && !temHumano(dataAtual()));
+  for (const tec of C.tecnicos) if (C.avisosData[tec.nome]) tec.avisos = [...(tec.avisos || []), ...C.avisosData[tec.nome]];
+  delete C.avisosData;
+  C.vez = 0; salvar(); abrirCarreira();
+};
+function encerrarTemporada() {
+  const ordens = Object.fromEntries(DIVS.map(d => [d, ordenar(C.ligas[d])])), cbCamp = C.comps?.cb?.campeao, temp = C.temporada;
+  const lib = ordens.A.slice(0, 6); if (cbCamp && !lib.includes(cbCamp)) lib.push(cbCamp); else lib.push(ordens.A[6]);
+  for (const d of DIVS) ordens[d].forEach((id, i) => premiar(id, Math.round(PREMIO_LIGA[d](i) * 100) / 100, `Premiação da ${NOME_DIV[d]} ${temp} (${i + 1}º lugar)`));
+  fimDaTemporada();
+  C.proxLib = lib;
+  iniciarTemporadaComps();
+  for (const tec of humanosAtivos()) { const c = C.comps.lib.grupos.some(g => g.ids.includes(tec.clube)); if (c) avisoCopa(tec.clube, `🌎 ${nomeTime(tec.clube)} está classificado para a Libertadores ${C.temporada}!`); }
+}
+
+/* ---------- tela: copas e estaduais ---------- */
+function listaComps() {
+  const K = C.comps || {}, l = [];
+  const tec = T(), uf = tec && !tec.demitido ? ufDe(tec.clube) : null;
+  const ests = Object.values(K.est || {}).sort((a, b) => (b.uf === uf) - (a.uf === uf) || a.nome.localeCompare(b.nome));
+  for (const e of ests) l.push(["EST:" + e.uf, "🏟 " + e.nome]);
+  for (const [k, m] of Object.entries(K.reg || {})) l.push(["REG:" + k, "🗺 " + m.nome]);
+  if (K.cb) l.push(["CB", "🏆 Copa do Brasil"]); if (K.lib) l.push(["LIB", "🌎 Libertadores"]); if (K.mun) l.push(["MUN", "🌍 Mundial de Clubes"]);
+  return l;
+}
+let COMP_SEL = null;
+function tabelaMini(obj, titulo, marca) {
+  const ord = ordenar(obj);
+  return `<h3>${esc(titulo)}</h3><table class="tab"><thead><tr><th>#</th><th>Clube</th><th>P</th><th>J</th><th>V</th><th>SG</th></tr></thead><tbody>` +
+    ord.map((id, i) => { const x = obj.tab[id]; return `<tr class="${id === marca ? "eu" : ""} ${i < (obj.passam || 0) ? "sobe" : ""}"><td>${i + 1}</td><td>${escudo(timePorId(id))}${esc(nomeTime(id))}</td><td><b>${x.P}</b></td><td>${x.J}</td><td>${x.V}</td><td>${x.GP - x.GC}</td></tr>`; }).join("") + "</tbody></table>";
+}
+function mataHtml(m, marca) {
+  if (!m) return "";
+  const lin = ([a, b, x, y, p]) => { const eu = a === marca || b === marca; return `<div>${eu ? "<b>" : ""}${esc(nomeTime(a))} ${x} × ${y} ${esc(nomeTime(b))}${p ? ` <span class="dica">(pên. ${p[0]}–${p[1]})</span>` : ""}${eu ? "</b>" : ""}</div>`; };
+  let h = m.campeao ? `<p>🏆 Campeão: <b>${escudo(timePorId(m.campeao))}${esc(nomeTime(m.campeao))}</b></p>` : "";
+  if (!m.campeao && m.jogos.length) h += `<h3>Próxima fase: ${m.fases[m.fase]}</h3><div class="res-l">${m.jogos.map(([a, b]) => `<div>${a === marca || b === marca ? "<b>" : ""}${esc(nomeTime(a))} × ${esc(nomeTime(b))}${a === marca || b === marca ? "</b>" : ""}</div>`).join("")}</div>`;
+  for (const f of m.hist.slice().reverse()) h += `<h3>${f.fase}</h3><div class="res-l">${f.jogos.map(lin).join("")}${f.folga ? `<div class="dica">${esc(nomeTime(f.folga))} passou sem jogar</div>` : ""}</div>`;
+  return h;
+}
+function desenharComp() {
+  const l = listaComps(), tec = T(), marca = tec.demitido ? null : tec.clube;
+  if (!l.length) { $("c-comp-box").hidden = true; return; } $("c-comp-box").hidden = false;
+  if (!l.some(x => x[0] === COMP_SEL)) COMP_SEL = (l.find(x => { const c = x[0]; return compTemClube(c, marca); }) || l[0])[0];
+  $("c-comp-sel").innerHTML = l.map(([k, n]) => `<option value="${k}" ${k === COMP_SEL ? "selected" : ""}>${esc(n)}${compTemClube(k, marca) ? " ⭐" : ""}</option>`).join("");
+  const K = C.comps, [tipo, sub] = COMP_SEL.split(":");
+  let h = "";
+  if (tipo === "EST") { const e = K.est[sub]; e.passam = 4; h = (e.mata ? mataHtml(e.mata, marca) : "") + tabelaMini(e, "Primeira fase (os 4 primeiros vão às semifinais)", marca); }
+  if (tipo === "REG") h = mataHtml(K.reg[sub], marca) + (K.reg[sub].hist.length ? "" : `<p class="dica">Participantes: ${K.reg[sub].vivos.map(nomeTime).map(esc).join(", ")}</p>`);
+  if (tipo === "CB") h = `<p class="dica">Times da Série A entram na 4ª fase. Jogo único; empate vai para os pênaltis.</p>` + mataHtml(K.cb, marca);
+  if (tipo === "LIB") h = (K.lib.mata ? mataHtml(K.lib.mata, marca) : "") + `<div class="grupos-lib">${K.lib.grupos.map(g => { g.passam = 2; return `<div>${tabelaMini(g, g.nome, marca)}</div>`; }).join("")}</div>`;
+  if (tipo === "MUN") h = `<p class="dica">O campeão da Libertadores enfrenta o campeão da Concacaf, depois o vencedor do Desafio e, na final, o campeão europeu.</p>` + mataHtml(K.mun, marca);
+  $("c-comp").innerHTML = h;
+}
+function compTemClube(k, id) {
+  if (!id || !C.comps) return false; const K = C.comps, [t, s] = k.split(":");
+  if (t === "EST") return K.est[s]?.ids.includes(id); if (t === "REG") return K.reg[s] && idsDasComps2(K.reg[s]).has(id);
+  if (t === "CB") return idsDasComps2(K.cb).has(id); if (t === "LIB") return K.lib.grupos.some(g => g.ids.includes(id)); if (t === "MUN") return idsDasComps2(K.mun).has(id);
+}
+function idsDasComps2(m) { const s = new Set(m?.vivos || []); for (const f of m?.hist || []) for (const j of f.jogos) { s.add(j[0]); s.add(j[1]); } for (const j of m?.jogos || []) { s.add(j[0]); s.add(j[1]); } for (const l of Object.values(m?.entram || {})) l.forEach(x => s.add(x)); return s; }
+$("c-comp-sel").onchange = () => { COMP_SEL = $("c-comp-sel").value; desenharComp(); };
 
 /* =====================================================================
    FINANÇAS E MERCADO DE TRANSFERÊNCIAS (carreira)
@@ -1275,19 +1547,18 @@ function fin(id) {                                        // caixa dos clubes do
 const norm = x => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 const marcarMudado = id => { (C.mudados ||= []); if (!C.mudados.includes(id)) C.mudados.push(id); };
 
-// finanças e propostas de compra depois de cada rodada
-const _jogarRodada = jogarRodada;
-jogarRodada = function () {
-  _jogarRodada();
+// finanças de cada data: TV e salários nas rodadas do campeonato, bilheteria em todo jogo em casa
+function financasDaData(ev, jogos) {
   for (const tec of C.tecnicos) {
     if (tec.demitido) continue;
-    const f = fin(tec.clube), d = divDe(tec.clube) || tec.div, t = timePorId(tec.clube);
-    const jogo = (C.ultimos || []).find(x => x[0] === tec.clube || x[1] === tec.clube), casa = jogo && jogo[0] === tec.clube;
-    const receita = TV_RODADA[d] + (casa ? BILHETERIA[d] * (0.7 + Math.random() * 0.6) : 0), despesa = folha(t);
-    f.caixa = Math.round((f.caixa + receita - despesa) * 100) / 100;
-    f.ultimo = { receita, despesa };
+    const f = fin(tec.clube), d = divDe(tec.clube) || tec.div, t = timePorId(tec.clube), liga = ev.t === "L";
+    if (!f.ultimo || f.ultimo.ciclo !== C.ciclo) f.ultimo = { receita: 0, despesa: 0, tv: 0, bil: 0, ciclo: C.ciclo };
+    const casa = jogos.some(m => m.casa === tec.clube);
+    const tv = liga ? TV_RODADA[d] : 0, bil = casa ? BILHETERIA[d] * (ev.t === "L" ? 1 : 1.3) * (0.7 + Math.random() * 0.6) : 0, despesa = liga ? folha(t) : 0;
+    f.caixa = Math.round((f.caixa + tv + bil - despesa) * 100) / 100;
+    f.ultimo.receita += tv + bil; f.ultimo.tv += tv; f.ultimo.bil += bil; f.ultimo.despesa += despesa;
+    if (!liga) continue;
     if (f.caixa < 0) { tec.conf = Math.max(0, tec.conf - 2); tec.avisos.push(`💸 O clube está no vermelho (${dinheiro(f.caixa)}). A diretoria cobra equilíbrio nas contas.`); }
-    // jogadores à venda recebem propostas de outros clubes
     tec.ofertas = (tec.ofertas || []).filter(o => t.jogadores.some(j => j[0] === o.nome));
     for (const nome of f.venda) {
       const j = t.jogadores.find(x => x[0] === nome); if (!j || tec.ofertas.some(o => o.nome === nome) || Math.random() > .35) continue;
@@ -1295,17 +1566,18 @@ jogarRodada = function () {
       tec.ofertas.push({ nome, clube: sorteia(compradores), valor: Math.round(valorJog(j) * (0.8 + Math.random() * 0.45) * 100) / 100 });
     }
   }
-  salvar(); abrirCarreira();
-};
+}
 const _abrirCarreira = abrirCarreira;
 abrirCarreira = function () {
   _abrirCarreira(); if (!C) return;
+  desenharComp();
   const tec = T();
   if (tec.demitido) { $("c-fin").innerHTML = "<p class='dica'>Sem clube no momento.</p>"; $("c-elenco").hidden = $("c-mercado").hidden = true; $("c-ofertas").innerHTML = ""; return; }
   $("c-elenco").hidden = $("c-mercado").hidden = false;
   const f = fin(tec.clube), t = timePorId(tec.clube);
   $("c-fin").innerHTML = `<p>Caixa: <b style="color:${f.caixa < 0 ? "var(--verm)" : "var(--verde)"}">${dinheiro(f.caixa)}</b> · folha por rodada: ${dinheiro(folha(t))} · elenco: ${t.jogadores.length} jogadores (valor ${dinheiro(t.jogadores.reduce((a, j) => a + valorJog(j), 0))})</p>` +
-    (f.ultimo ? `<p class="dica">Última rodada: receitas ${dinheiro(f.ultimo.receita)} (TV${f.ultimo.receita > TV_RODADA[tec.div] + .001 ? " + bilheteria" : ""}) · salários ${dinheiro(f.ultimo.despesa)}</p>` : "");
+    (f.ultimo ? `<p class="dica">Último período: TV ${dinheiro(f.ultimo.tv || 0)} · bilheteria ${dinheiro(f.ultimo.bil || 0)} · salários ${dinheiro(f.ultimo.despesa)}</p>` : "") +
+    (f.premios?.length ? `<details><summary>🏅 Premiações recebidas (${f.premios.length})</summary>${f.premios.map(x => `<div class="dica">${esc(x)}</div>`).join("")}</details>` : "");
   $("c-ofertas").innerHTML = (tec.ofertas || []).map((o, i) => `<p>📩 ${esc(nomeTime(o.clube))} oferece <b>${dinheiro(o.valor)}</b> por <b>${esc(o.nome)}</b> <button data-of-ok="${i}">✔ Aceitar</button> <button data-of-no="${i}">✖ Recusar</button></p>`).join("");
 };
 $("c-ofertas").onclick = e => {
