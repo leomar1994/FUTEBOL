@@ -13,6 +13,11 @@ Jogo de técnico de futebol que roda direto no navegador, sem instalar nada e se
 - Tela de GOL com o nome do time
 - Velocidades 1x a 8x, pausa e "ir para o resultado"
 
+## Times reais (Séries A, B, C e D)
+Abra **🧰 Montar times reais** no jogo (`pacote.html`). Com uma conta grátis da [API-Football](https://dashboard.api-football.com), a página baixa os elencos atuais direto no seu navegador (a chave não sai dele) e monta o pacote. O progresso fica salvo se o limite diário de 100 pedidos acabar. O arquivo `brasil.json` gerado pode ir para `dados/brasil.json` no repositório para todos jogarem com os mesmos times.
+
+Escudos: o jogo desenha escudos próprios com as cores e a sigla de cada clube. Os escudos oficiais são marcas dos clubes; há uma opção para exibi-los da internet, desligada por padrão.
+
 ## Próximos passos
 - Pacote com os times das Séries A, B, C e D, campeonato com acesso e rebaixamento
 - Gestão do clube: transferências, finanças, categorias de base

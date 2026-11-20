@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gerador de pacote de times — Técnico</title>
+<style>
+  :root { --bg:#0f1512; --painel:#17201b; --painel2:#1e2a23; --borda:#2c3b32; --texto:#e8efe9; --fraco:#97a89d; --verde:#3ddc84; --verm:#ff5c5c; --amar:#ffd166; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--texto); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 16px; }
+  .caixa { background: var(--painel); border: 1px solid var(--borda); border-radius: 12px; padding: 14px; margin: 12px 0; }
+  h1 { font-size: 22px; margin: 6px 0; } h2 { font-size: 17px; margin: 0 0 8px; }
+  .dica { color: var(--fraco); font-size: 13.5px; }
+  input { font: inherit; width: 100%; padding: 9px; border-radius: 8px; border: 1px solid var(--borda); background: var(--painel2); color: var(--texto); }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--borda); background: var(--painel2); color: var(--texto); padding: 8px 14px; margin: 4px 4px 0 0; }
+  button.prim { background: var(--verde); color: #08130c; border-color: var(--verde); font-weight: 700; }
+  button:disabled { opacity: .45; cursor: default; }
+  .barra { height: 12px; background: #26332b; border-radius: 6px; overflow: hidden; margin: 8px 0; } .barra i { display: block; height: 100%; background: var(--verde); width: 0; }
+  #log { max-height: 260px; overflow: auto; font-size: 13px; background: #0b100d; border-radius: 8px; padding: 8px; white-space: pre-wrap; }
+  .ok { color: var(--verde); } .erro { color: var(--verm); } .av { color: var(--amar); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; } td, th { padding: 4px 6px; border-bottom: 1px solid #222e27; text-align: left; }
+  a { color: var(--verde); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧰 Gerador do pacote de times</h1>
+  <p class="dica">Monta os times reais das Séries A, B e C (e D, se a API liberar) com os elencos atuais, usando a sua conta grátis da <b>API-Football</b>. Tudo acontece neste navegador: a sua chave <b>não</b> vai para o jogo, para o GitHub nem para ninguém.</p>
+
+  <div class="caixa">
+    <h2>1. Sua chave da API-Football</h2>
+    <p class="dica">Crie a conta grátis em <a href="https://dashboard.api-football.com/register" target="_blank" rel="noopener">dashboard.api-football.com</a> → <b>Account → My Access</b> → copie a <b>API Key</b>.</p>
+    <input id="chave" type="password" autocomplete="off" placeholder="Cole a chave aqui">
+    <label class="dica"><input type="checkbox" id="lembrar" style="width:auto"> Lembrar a chave neste navegador (para continuar amanhã)</label>
+  </div>
+
+  <div class="caixa">
+    <h2>2. Baixar os elencos</h2>
+    <p class="dica">O plano grátis tem 100 pedidos por dia. São cerca de 65 pedidos para as Séries A, B e C (e mais 96 para a D). Se o limite acabar, o progresso fica salvo: volte depois das 21h (horário de Brasília) e toque em "Continuar".</p>
+    <button class="prim" id="ir">▶ Começar / continuar</button> <button id="parar" disabled>⏸ Parar</button> <button id="zerar">🗑 Recomeçar do zero</button>
+    <div class="barra"><i id="prog"></i></div>
+    <div class="dica" id="status">Pronto para começar.</div>
+    <div id="log"></div>
+  </div>
+
+  <div class="caixa">
+    <h2>3. Usar no jogo</h2>
+    <p class="dica">Times sem elenco baixado ainda entram no jogo com jogadores gerados automaticamente.</p>
+    <button class="prim" id="usar">⚽ Usar no jogo deste navegador</button> <button id="baixar">⬇ Baixar o arquivo do pacote (.json)</button>
+    <p class="dica">Para todo mundo jogar com os times reais (inclusive online), mande o arquivo <b>brasil.json</b> para o Claude colocar no repositório.</p>
+    <div id="resumo"></div>
+  </div>
+</div>
+
+<script>
+/* Clubes de 2026 por divisão. busca: nomes como a API costuma escrever (sem acento, minúsculo). cores: [principal, secundária] */
+const CLUBES = {
+  A: [["Athletico-PR","CAP",["atletico paranaense","athletico paranaense","athletico-pr"],"#c8102e","#111111",3],["Atlético-MG","CAM",["atletico-mg","atletico mineiro"],"#111111","#ffffff",4],["Bahia","BAH",["bahia"],"#0a3c8c","#e30613",4],
+      ["Botafogo","BOT",["botafogo"],"#111111","#ffffff",5],["Chapecoense","CHA",["chapecoense-sc","chapecoense"],"#00843d","#ffffff",-2],["Corinthians","COR",["corinthians"],"#ffffff","#111111",4],["Coritiba","CFC",["coritiba"],"#006b3f","#ffffff",0],
+      ["Cruzeiro","CRU",["cruzeiro"],"#0033a0","#ffffff",5],["Flamengo","FLA",["flamengo"],"#c8102e","#111111",8],["Fluminense","FLU",["fluminense"],"#7a0a2a","#00613c",5],["Grêmio","GRE",["gremio"],"#0d80bf","#111111",3],
+      ["Internacional","INT",["internacional"],"#e30613","#ffffff",4],["Mirassol","MIR",["mirassol"],"#ffd200","#00843d",1],["Palmeiras","PAL",["palmeiras"],"#006437","#ffffff",8],["Red Bull Bragantino","RBB",["bragantino","red bull bragantino","rb bragantino"],"#ffffff","#e30613",2],
+      ["Remo","REM",["remo"],"#0a2240","#ffffff",-1],["Santos","SAN",["santos"],"#ffffff","#111111",2],["São Paulo","SAO",["sao paulo"],"#ffffff","#e30613",4],["Vasco","VAS",["vasco da gama","vasco"],"#111111","#ffffff",2],["Vitória","VIT",["vitoria"],"#e30613","#111111",0]],
+  B: [["América-MG","AME",["america mineiro","america-mg"],"#00843d","#111111",2],["Athletic","ATH",["athletic club","athletic"],"#111111","#ffffff",-2],["Atlético-GO","ACG",["atletico goianiense","atletico-go"],"#c8102e","#111111",2],
+      ["Avaí","AVA",["avai"],"#0057a8","#ffffff",0],["Botafogo-SP","BFS",["botafogo sp","botafogo-sp"],"#e30613","#ffffff",-1],["Ceará","CEA",["ceara"],"#111111","#ffffff",3],["CRB","CRB",["crb"],"#e30613","#ffffff",0],
+      ["Criciúma","CRI",["criciuma"],"#ffd200","#111111",1],["Cuiabá","CUI",["cuiaba"],"#00843d","#ffd200",1],["Fortaleza","FOR",["fortaleza ec","fortaleza"],"#0055a4","#e30613",3],["Goiás","GOI",["goias"],"#00843d","#ffffff",1],
+      ["Juventude","JUV",["juventude"],"#007a33","#ffffff",1],["Londrina","LON",["londrina"],"#00a3e0","#ffffff",-1],["Náutico","NAU",["nautico recife","nautico"],"#e30613","#ffffff",0],["Novorizontino","NOV",["novorizontino","gremio novorizontino"],"#ffd200","#111111",1],
+      ["Operário-PR","OPE",["operario-pr","operario pr","operario"],"#111111","#ffffff",0],["Ponte Preta","PON",["ponte preta"],"#ffffff","#111111",-1],["São Bernardo","SBE",["sao bernardo","sao bernardo fc"],"#ffd200","#111111",-1],["Sport","SPT",["sport recife","sport"],"#e30613","#111111",3],["Vila Nova","VNO",["vila nova"],"#e30613","#ffffff",1]],
+  C: [["Amazonas","AMZ",["amazonas"],"#ffd200","#111111",0],["Anápolis","ANA",["anapolis"],"#e30613","#ffffff",-1],["Barra","BAR",["barra","barra fc","barra-sc"],"#0057a8","#ffffff",-1],["Botafogo-PB","BPB",["botafogo pb","botafogo-pb"],"#111111","#ffffff",0],
+      ["Brusque","BRU",["brusque"],"#ffd200","#00843d",0],["Caxias","CAX",["caxias"],"#7a0a2a","#ffffff",0],["Confiança","CON",["confianca"],"#0057a8","#ffffff",0],["Ferroviária","FER",["ferroviaria"],"#7a0a2a","#ffffff",1],
+      ["Figueirense","FIG",["figueirense"],"#111111","#ffffff",1],["Floresta","FLO",["floresta"],"#00843d","#ffffff",-1],["Guarani","GUA",["guarani campinas","guarani"],"#007a33","#ffffff",1],["Inter de Limeira","INL",["inter de limeira","internacional de limeira"],"#111111","#ffffff",0],
+      ["Itabaiana","ITA",["itabaiana"],"#0057a8","#ffffff",-1],["Ituano","ITU",["ituano"],"#e30613","#111111",0],["Maranhão","MAR",["maranhao"],"#e30613","#0057a8",-1],["Maringá","MGA",["maringa"],"#1d3c8f","#ffffff",1],
+      ["Paysandu","PAY",["paysandu"],"#00a3e0","#ffffff",2],["Santa Cruz","STC",["santa cruz"],"#111111","#e30613",1],["Volta Redonda","VRE",["volta redonda"],"#ffd200","#111111",0],["Ypiranga-RS","YPI",["ypiranga-rs","ypiranga rs","ypiranga erechim"],"#00843d","#ffd200",0]]
+};
+const BASE_DIV = { A: 69, B: 62, C: 56, D: 50 };
+const NOMES_DIV = { A: "Série A", B: "Série B", C: "Série C", D: "Série D" };
+const API = "https://v3.football.api-sports.io";
+const $ = id => document.getElementById(id);
+const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+const ler = () => { try { return JSON.parse(localStorage.getItem("pacote_progresso") || "null"); } catch (e) { return null; } };
+const gravar = p => { try { localStorage.setItem("pacote_progresso", JSON.stringify(p)); } catch (e) { log("Não consegui salvar o progresso (memória do navegador cheia?).", "erro"); } };
+let P = ler() || { times: {}, etapa: "times", restantes: null };   // times[chave] = { div, nome, sigla, cor, cor2, mod, apiId, logo, elenco: [...] | null }
+let parar = false, rodando = false;
+
+function log(t, cls = "") { const d = document.createElement("div"); d.className = cls; d.textContent = new Date().toLocaleTimeString("pt-BR") + "  " + t; $("log").prepend(d); }
+function status(t) { $("status").textContent = t; }
+function progresso() {
+  const ts = Object.values(P.times), feitos = ts.filter(t => t.elenco).length;
+  $("prog").style.width = ts.length ? (feitos / ts.length * 100) + "%" : "0";
+  $("resumo").innerHTML = ts.length ? `<table><tr><th>Divisão</th><th>Times</th><th>Com elenco real</th></tr>${["A", "B", "C", "D"].map(d => { const l = ts.filter(t => t.div === d); return l.length ? `<tr><td>${NOMES_DIV[d]}</td><td>${l.length}</td><td>${l.filter(t => t.elenco).length}</td></tr>` : ""; }).join("")}</table>` : "";
+  return { total: ts.length, feitos };
+}
+async function api(caminho) {
+  const r = await fetch(API + caminho, { headers: { "x-apisports-key": $("chave").value.trim() } });
+  const rest = r.headers.get("x-ratelimit-requests-remaining"); if (rest != null) P.restantes = Number(rest);
+  const j = await r.json().catch(() => ({}));
+  const erros = j.errors && (Array.isArray(j.errors) ? j.errors.join(" ") : Object.values(j.errors).join(" "));
+  if (!r.ok || erros) throw Object.assign(new Error(erros || "erro " + r.status), { limite: /limit|requests|plan|subscription|token|key/i.test(erros || "") || r.status === 429, chave: /key|token|access/i.test(erros || "") });
+  return j;
+}
+function prepararLista() {
+  for (const d of ["A", "B", "C"]) for (const [nome, sigla, busca, cor, cor2, mod] of CLUBES[d]) {
+    const k = d + ":" + sigla;
+    if (!P.times[k]) P.times[k] = { div: d, nome, sigla, busca, cor, cor2, mod, apiId: null, logo: "", elenco: null };
+  }
+}
+function casar(lista) {                                   // liga os nomes da API aos nossos clubes
+  const cand = lista.filter(x => !/\b(w|u\d\d|women|feminino|sub-?\d\d)\b/i.test(x.team.name) && !x.team.national);
+  for (const t of Object.values(P.times)) {
+    if (t.apiId) continue;
+    let m = null;
+    for (const b of t.busca || [norm(t.nome)]) { m = cand.find(x => norm(x.team.name) === b); if (m) break; }
+    if (!m) for (const b of t.busca || [norm(t.nome)]) { m = cand.find(x => norm(x.team.name).startsWith(b + " ") || norm(x.team.name).endsWith(" " + b)); if (m) break; }
+    if (m) { t.apiId = m.team.id; t.logo = m.team.logo || ""; }
+  }
+}
+async function rodar() {
+  if (rodando) return;
+  if (!$("chave").value.trim()) { status("Cole a sua chave primeiro."); return; }
+  if ($("lembrar").checked) localStorage.setItem("pacote_chave", $("chave").value.trim()); else localStorage.removeItem("pacote_chave");
+  rodando = true; parar = false; $("ir").disabled = true; $("parar").disabled = false;
+  try {
+    prepararLista();
+    if (P.etapa === "times") {
+      status("Conferindo a chave…");
+      const st = await api("/status"); log(`Chave OK. Plano: ${st.response?.subscription?.plan || "?"} · pedidos hoje: ${st.response?.requests?.current ?? "?"} de ${st.response?.requests?.limit_day ?? "?"}`, "ok");
+      status("Buscando os clubes do Brasil…");
+      const j = await api("/teams?country=Brazil");
+      casar(j.response || []);
+      const sem = Object.values(P.times).filter(t => !t.apiId);
+      log(`Clubes encontrados: ${Object.values(P.times).length - sem.length} de ${Object.values(P.times).length}.` + (sem.length ? ` Sem correspondência (vão com elenco gerado): ${sem.map(t => t.nome).join(", ")}.` : ""), sem.length ? "av" : "ok");
+      // Série D: só se o plano grátis liberar a temporada atual
+      try {
+        const d = await api(`/teams?league=76&season=${new Date().getFullYear()}`);
+        const ja = new Set(Object.values(P.times).map(t => t.apiId).filter(Boolean)); let n = 0;
+        for (const x of d.response || []) if (!ja.has(x.team.id)) { const sig = (x.team.code || x.team.name.slice(0, 3)).toUpperCase(); P.times["D:" + x.team.id] = { div: "D", nome: x.team.name, sigla: sig, cor: corDoNome(x.team.name), cor2: "#ffffff", mod: 0, apiId: x.team.id, logo: x.team.logo || "", elenco: null }; n++; }
+        log(n ? `Série D: ${n} clubes adicionados.` : "Série D: a API não devolveu clubes.", n ? "ok" : "av");
+      } catch (e) { log("Série D: o plano grátis não liberou a temporada atual (" + e.message + "). Fica para depois.", "av"); if (e.limite && !e.message.match(/season|plan/i)) throw e; }
+      P.etapa = "elencos"; gravar(P);
+    }
+    const fila = Object.values(P.times).filter(t => t.apiId && !t.elenco).sort((a, b) => a.div.localeCompare(b.div));
+    for (const t of fila) {
+      if (parar) { status("Parado. Toque em Continuar quando quiser."); break; }
+      if (P.restantes != null && P.restantes <= 0) { status("Acabaram os pedidos de hoje. Volte depois das 21h (Brasília) e toque em Continuar."); break; }
+      status(`Baixando o elenco: ${t.nome} (${NOMES_DIV[t.div]})…  pedidos restantes hoje: ${P.restantes ?? "?"}`);
+      const j = await api(`/players/squads?team=${t.apiId}`);
+      const jog = j.response?.[0]?.players || [];
+      t.elenco = jog.map(p => ({ nome: p.name, posApi: p.position, idade: p.age || 0, num: p.number || 0 }));
+      log(`${t.nome}: ${t.elenco.length} jogadores.`, t.elenco.length ? "" : "av");
+      gravar(P); progresso();
+      await new Promise(r => setTimeout(r, 2200));            // respeita o limite por minuto
+    }
+    const { total, feitos } = progresso();
+    if (feitos >= Object.values(P.times).filter(t => t.apiId).length) status(`Pronto! ${feitos} de ${total} times com elenco real. Agora use o passo 3.`);
+  } catch (e) {
+    if (e.chave) status("A API recusou a chave: confira se copiou inteira.");
+    else if (e.limite) status("Limite de pedidos atingido. O progresso está salvo: volte depois das 21h (Brasília) e toque em Continuar.");
+    else if (e instanceof TypeError) status("Não consegui falar com a API (sem internet ou bloqueio do navegador).");
+    else status("Erro: " + e.message);
+    log(e.message, "erro");
+  } finally { rodando = false; $("ir").disabled = false; $("parar").disabled = true; gravar(P); progresso(); }
+}
+function corDoNome(n) { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0; return `hsl(${h % 360} 65% 38%)`; }
+
+/* ----- transforma em pacote do jogo: posições e forças estimadas ----- */
+function semente(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 10000) / 10000; }; }
+function montarPacote() {
+  const divs = { A: [], B: [], C: [], D: [] };
+  for (const t of Object.values(P.times)) {
+    const r = semente(t.nome), base = BASE_DIV[t.div] + (t.mod || 0);
+    let elenco = (t.elenco || []).filter(p => p.nome);
+    if (elenco.length < 16) elenco = gerarElenco(t, r);
+    const grupos = { Goalkeeper: [], Defender: [], Midfielder: [], Attacker: [] };
+    for (const p of elenco) (grupos[p.posApi] || grupos.Midfielder).push(p);
+    const pos = [];
+    grupos.Goalkeeper.forEach(p => pos.push([p, "GOL"]));
+    grupos.Defender.forEach((p, i) => pos.push([p, ["ZAG", "LD", "LE", "ZAG", "ZAG", "LD", "LE", "ZAG"][i % 8]]));
+    grupos.Midfielder.forEach((p, i) => pos.push([p, ["VOL", "MC", "MEI", "VOL", "MC", "MEI", "MC", "VOL"][i % 8]]));
+    grupos.Attacker.forEach((p, i) => pos.push([p, ["CA", "PE", "PD", "CA", "PE", "PD"][i % 6]]));
+    const jogadores = pos.map(([p, ps], i) => {
+      const idade = p.idade || 18 + Math.floor(r() * 16), auge = idade >= 24 && idade <= 31 ? 3 : idade < 21 ? -4 : idade > 34 ? -3 : 0;
+      const titular = p.num >= 1 && p.num <= 11 ? 2 : 0;
+      const f = Math.round(Math.max(40, Math.min(92, base + auge + titular + (r() * 14 - 7))));
+      return [p.nome, ps, f, idade];
+    });
+    divs[t.div].push({ id: t.div.toLowerCase() + "_" + t.sigla.toLowerCase().replace(/[^a-z0-9]/g, "") + (t.div === "D" ? t.apiId : ""), nome: t.nome, curto: t.sigla.slice(0, 3), cor: t.cor, cor2: t.cor2, logo: t.logo || "", real: !!t.elenco?.length, jogadores });
+  }
+  return { versao: 1, gerado: new Date().toISOString(), fonte: "API-Football (elencos) · forças estimadas pelo jogo", divisoes: Object.entries(divs).filter(([, l]) => l.length).map(([d, times]) => ({ id: d, nome: NOMES_DIV[d], times })) };
+}
+const PRIMEIROS = ["Lucas","Gabriel","Matheus","João","Pedro","Rafael","Bruno","Felipe","Thiago","Diego","Caio","Vitor","Igor","Renan","Wesley","Alan","Douglas","Jean","Kaique","Luan","Murilo","Nathan","Otávio","Ruan","Sandro","Tiago","Yuri","Everton","Fábio","Hugo"];
+const SOBRENOMES = ["Silva","Santos","Oliveira","Souza","Lima","Pereira","Costa","Ferreira","Almeida","Ribeiro","Carvalho","Gomes","Martins","Rocha","Barbosa","Araújo","Dias","Moreira","Nunes","Teixeira"];
+function gerarElenco(t, r) {
+  const l = [], posApi = [..."GGG", ..."DDDDDDDD", ..."MMMMMMMM", ..."AAAAA"];
+  const mapa = { G: "Goalkeeper", D: "Defender", M: "Midfielder", A: "Attacker" };
+  posApi.forEach((c, i) => l.push({ nome: PRIMEIROS[Math.floor(r() * PRIMEIROS.length)] + " " + SOBRENOMES[Math.floor(r() * SOBRENOMES.length)], posApi: mapa[c], idade: 18 + Math.floor(r() * 16), num: i + 1 }));
+  return l;
+}
+
+$("ir").onclick = rodar;
+$("parar").onclick = () => { parar = true; };
+$("zerar").onclick = () => { if (!confirm("Apagar todo o progresso baixado?")) return; localStorage.removeItem("pacote_progresso"); P = { times: {}, etapa: "times", restantes: null }; $("log").innerHTML = ""; progresso(); status("Progresso apagado."); };
+$("usar").onclick = () => { prepararLista(); const pk = montarPacote(); try { localStorage.setItem("pacote_brasil", JSON.stringify(pk)); alert(`Pacote salvo neste navegador: ${pk.divisoes.map(d => d.nome + " (" + d.times.length + ")").join(", ")}. Abra o jogo.`); location.href = "index.html"; } catch (e) { alert("Não coube na memória do navegador. Baixe o arquivo e mande para o Claude."); } };
+$("baixar").onclick = () => { prepararLista(); const b = new Blob([JSON.stringify(montarPacote())], { type: "application/json" }); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(b), download: "brasil.json" }); a.click(); };
+const salva = localStorage.getItem("pacote_chave"); if (salva) { $("chave").value = salva; $("lembrar").checked = true; }
+prepararLista(); progresso();
+if (P.etapa === "elencos") status(`Progresso salvo: ${progresso().feitos} times com elenco. Toque em Continuar.`);
+</script>
+</body>
+</html>
