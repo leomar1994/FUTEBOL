@@ -263,6 +263,19 @@
             <div class="ft"><label>Formação</label><select id="on-form"></select></div>
             <div class="ft"><label>Estilo</label><select id="on-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo (marca mais, sofre mais)</option><option value="de">Retranca (sofre menos, marca menos)</option></select></div>
             <p><button class="prim" id="on-tatica">💾 Salvar tática</button> <span class="dica" id="on-msg-tat"></span></p></div>
+          <div class="caixa" style="margin-top:12px" id="am-box"><h2>🤝 Amistosos</h2>
+            <p class="dica">Para jogar em outro horário. Amistoso não vale nada: não conta na tabela, não dá tokens e não mexe com a diretoria.</p>
+            <div id="am-form">
+              <h3>⚽ Jogar agora contra um clube da liga</h3>
+              <div class="ft"><label>Adversário</label><select id="am-adv"></select></div>
+              <div class="ft"><label>Mando</label><select id="am-mando"><option value="casa">Em casa</option><option value="fora">Fora de casa</option></select></div>
+              <p><button class="prim" id="am-jogar">▶ Jogar agora</button></p>
+              <h3>📅 Desafiar outro técnico (dia e hora marcados)</h3>
+              <div class="ft"><label>Técnico</label><select id="am-tec"></select></div>
+              <div class="ft"><label>Dia e hora</label><input type="datetime-local" id="am-quando" style="font:inherit;background:var(--painel2);color:var(--texto);border:1px solid var(--borda);border-radius:8px;padding:8px"></div>
+              <p><button id="am-desafiar">📨 Enviar desafio</button> <span class="dica" id="am-msg"></span></p>
+            </div>
+            <div class="res-l" id="am-lista"></div></div>
           <div class="caixa" style="margin-top:12px"><h2>Jogos da sua divisão</h2><p class="dica">🔴 = ao vivo agora (toque em 📺 Assistir). O placar só aparece quando o jogo termina.</p><div class="res-l" id="on-res"></div></div>
           <div class="caixa" style="margin-top:12px"><h2>Técnicos da liga</h2><div class="res-l" id="on-tecs"></div></div>
         </div>
@@ -425,7 +438,7 @@ function iniciarPartida() {
         posse: null, dono: null, bola: { x: L / 2, y: A / 2 }, anim: null, aba: "meu", ult: null, passeDe: null, acrescimo: [Math.floor(entre(1, 4)), Math.floor(entre(2, 6))] };
   J.posse = J.casa; J.dono = meio(J.casa); ajustarUniformes();
   posicionar(); J.bola = { x: L / 2, y: A / 2 }; congelarPos();
-  J.carreira = MODO_CARREIRA; MODO_CARREIRA = null; tela("partida");
+  J.carreira = MODO_CARREIRA; MODO_CARREIRA = null; J.amistosoOn = AMISTOSO_ON; AMISTOSO_ON = false; tela("partida");
   $("feed").innerHTML = ""; $("nova").hidden = true; $("fim-rapido").disabled = false; $("aviso-int").style.display = "none";
   $("t-casa").innerHTML = escudo(J.casa) + esc(J.casa.nome); $("t-fora").innerHTML = esc(J.fora.nome) + escudo(J.fora);
   narrar("apito", `Rola a bola! ${J.casa.nome} (${J.casa.formacao}) x ${J.fora.nome} (${J.fora.formacao}).`);
@@ -666,7 +679,7 @@ function encerrar() {
   const craque = todos.sort((a, b) => b.nota - a.nota)[0];
   if (craque) narrar("", `⭐ Melhor em campo: ${craque.nome} (nota ${craque.nota.toFixed(1)}).`);
   $("pausa").disabled = true; $("fim-rapido").disabled = true; $("nova").hidden = false; $("aviso-int").style.display = "none";
-  $("nova").textContent = J.replay ? "↩ Voltar à liga" : J.carreira ? "↩ Voltar à temporada" : "↩ Nova partida";
+  $("nova").textContent = J.replay || J.amistosoOn ? "↩ Voltar à liga" : J.carreira ? "↩ Voltar à temporada" : "↩ Nova partida";
   if (J.replay) rnd = Math.random;
   atualizarTudo();
 }
@@ -901,7 +914,7 @@ $("esc-ok").onclick = () => {
   if (ESC_MODO === "pre") { if ($("sel-meu").value === $("sel-adv").value) return alert("Escolha dois times diferentes."); if (MODO_CARREIRA && C) guardarTatica(ESC_TIME); iniciarPartida(); }
   else { atualizarTudo(); }
 };
-$("esc-cancelar").onclick = () => { $("m-esc").classList.remove("on"); MODO_CARREIRA = null; ESC_SALVAR = false; ESC_TIME = null; };
+$("esc-cancelar").onclick = () => { $("m-esc").classList.remove("on"); MODO_CARREIRA = null; ESC_SALVAR = false; ESC_TIME = null; AMISTOSO_ON = false; };
 let ESC_SALVAR = false;
 
 /* ===================== controles ===================== */
@@ -976,7 +989,7 @@ function sincronizarAoVivo() {
 }
 $("nova").onclick = () => { if (J?.tGol) clearTimeout(J.tGol); if (J?.tInt) clearTimeout(J.tInt); $("vel").style.pointerEvents = ""; esconderGol(); const fim = J; J = null; $("pausa").disabled = false; $("pausa").textContent = "⏸ Pausar"; $("m-campo").classList.remove("on");
   rnd = Math.random; $("abrir-esc").hidden = false;
-  if (fim?.replay) tela("online"); else if (fim?.carreira) fimDoJogoCarreira(fim); else tela("inicio"); };
+  if (fim?.replay || fim?.amistosoOn) tela("online"); else if (fim?.carreira) fimDoJogoCarreira(fim); else tela("inicio"); };
 // substituição do jogador
 let saindo = null;
 $("notas").onclick = e => {
@@ -994,7 +1007,7 @@ $("subs-cancelar").onclick = () => $("subs").classList.remove("on");
 /* =====================================================================
    TELAS · MENU · CONFIGURAÇÕES · CARREIRA · EDITOR
    ===================================================================== */
-var MODO_CARREIRA = null, C = null;               // C = carreira em andamento (salva no navegador)
+var MODO_CARREIRA = null, C = null, AMISTOSO_ON = false;               // C = carreira em andamento (salva no navegador)
 const TELAS = ["menu", "config", "novo", "carreira", "elenco", "mercado", "editor", "online", "inicio", "partida"];
 function tela(id) {
   for (const t of TELAS) $(t)?.classList.toggle("on", t === id);
@@ -1763,7 +1776,10 @@ const ONAPI = {
   async minhaTatica(uid) { const r = await SB.from("liga_taticas").select("*").eq("user_id", uid).maybeSingle(); return r.data; },
   async salvarTatica(uid, formacao, estilo) { const r = await SB.from("liga_taticas").upsert({ user_id: uid, formacao, estilo, atualizado: new Date().toISOString() }); if (r.error) throw r.error; },
   async assumir(nome, nac) { const r = await SB.rpc("liga_entrar", { p_nome: nome, p_nac: nac }); if (r.error) throw r.error; return r.data; },
-  async aceitar(clube) { const r = await SB.rpc("liga_aceitar", { p_clube: clube }); if (r.error) throw r.error; return r.data; }
+  async aceitar(clube) { const r = await SB.rpc("liga_aceitar", { p_clube: clube }); if (r.error) throw r.error; return r.data; },
+  async amistosos(uid) { const r = await SB.from("liga_amistosos").select("*").or(`desafiante.eq.${uid},desafiado.eq.${uid}`).order("quando", { ascending: false }).limit(40); return r.error ? [] : r.data; },
+  async desafiar(adv, quando) { const r = await SB.rpc("liga_desafiar", { p_adversario: adv, p_quando: quando }); if (r.error) throw r.error; return r.data; },
+  async responder(id, aceitar) { const r = await SB.rpc("liga_responder_amistoso", { p_id: id, p_aceitar: aceitar }); if (r.error) throw r.error; return r.data; }
 };
 const clubeOn = id => { const c = ON.clubes[id]; return c ? { id: c.id, nome: c.nome, curto: c.sigla, cor: c.cor, cor2: c.cor2 } : { id, nome: id || "—", curto: "?", cor: "#444", cor2: "#fff" }; };
 const nomeOn = id => clubeOn(id).nome;
@@ -1786,6 +1802,7 @@ async function recarregarOnline() {
   onStatus("");
   if (!ON.eu) { $("on-nac").innerHTML = NACIONALIDADES.map(([n, b]) => `<option>${b} ${n}</option>`).join(""); return onMostrar("novo"); }
   ON.tatica = await ONAPI.minhaTatica(ON.user.id);
+  ON.amistosos = await ONAPI.amistosos(ON.user.id).catch(() => []);
   desenharOnline(); onMostrar("hub");
 }
 function ordemOn(div) { return ON.classif.filter(c => c.div === div).sort((a, b) => b.p - a.p || b.v - a.v || (b.gp - b.gcontra) - (a.gp - a.gcontra) || b.gp - a.gp || a.clube.localeCompare(b.clube)); }
@@ -1793,8 +1810,8 @@ function ordemOn(div) { return ON.classif.filter(c => c.div === div).sort((a, b)
 const TURNO_UTC = { 1: [15, 0], 2: [15, 20] }, HORA_TURNO = { 1: "12h00", 2: "12h20" };
 function proximoTurnoEm(t) { const a = new Date(), [h, m] = TURNO_UTC[t || 1]; let p = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate(), h, m)); if (p <= a) p = new Date(p.getTime() + 86400000); return p; }
 const proximaRodadaEm = () => proximoTurnoEm(1);
-const aoVivo = j => j.jogado && j.fim && new Date(j.fim) > new Date();
-const encerrado = j => j.jogado && (!j.fim || new Date(j.fim) <= new Date());
+const aoVivo = j => (j.jogado || j.status === "jogado") && j.fim && new Date(j.fim) > new Date();
+const encerrado = j => (j.jogado || j.status === "jogado") && (!j.fim || new Date(j.fim) <= new Date());
 const faltaTxt = d => { const ms = d - new Date(), h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000); return h ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`; };
 function linhaJogoOn(j, eu) {
   const meu = j.casa === eu.clube || j.fora === eu.clube, b = t => meu ? `<b>${t}</b>` : t;
@@ -1805,11 +1822,12 @@ function linhaJogoOn(j, eu) {
 function jogosOnHtml(lista, eu) {
   return [1, 2].map(t => { const l = lista.filter(j => (j.turno || 1) === t); return l.length ? `<h3>${HORA_TURNO[t]}</h3>` + l.map(j => linhaJogoOn(j, eu)).join("") : ""; }).join("");
 }
-const chaveVivoOn = () => (ON.jogos || []).map(j => (aoVivo(j) ? "v" : encerrado(j) ? "e" : "n")).join("");
+const chaveVivoOn = () => [...(ON.jogos || []), ...(ON.amistosos || [])].map(j => (aoVivo(j) ? "v" : encerrado(j) ? "e" : "n")).join("");
 setInterval(() => {                                        // mantém a tela da liga em dia perto da hora dos jogos
   if (!$("online").classList.contains("on") || !ON.eu || document.hidden) return;
   const a = new Date(), min = a.getUTCHours() * 60 + a.getUTCMinutes();
-  if (min >= 899 && min <= 940 && a.getUTCSeconds() < 30) recarregarOnline().catch(() => {});
+  const amDevido = (ON.amistosos || []).some(x => x.status === "aceito" && new Date(x.quando) <= a);
+  if ((min >= 899 && min <= 940 && a.getUTCSeconds() < 30) || amDevido) recarregarOnline().catch(() => {});
   else if (ON._chave !== chaveVivoOn()) desenharOnline(); else atualizarRelogioOn();
 }, 30000);
 function atualizarRelogioOn() {
@@ -1846,6 +1864,7 @@ function desenharOnline() {
     (anterior.length ? `<h3>Rodada ${est.rodada - 1}</h3>${jogosOnHtml(anterior, eu)}` : "") + (!atual.some(j => j.jogado) && anterior.length ? `<h3>Rodada ${est.rodada} (próxima)</h3>${jogosOnHtml(atual, eu)}` : "");
   const humanos = new Map(ON.tecnicos.filter(t => t.clube).map(t => [t.clube, t.nome]));
   $("on-tecs").innerHTML = ON.tecnicos.slice().sort((a, b) => a.nivel - b.nivel || (b.titulos?.length || 0) - (a.titulos?.length || 0)).map(t => `<div>👔 <b>${esc(t.nome)}</b> ${esc((t.nac || "").split(" ")[0])} · ${t.demitido ? "sem clube" : esc(nomeOn(t.clube))} · nível ${NUM_DIV[DIVS[t.nivel]]}${t.titulos?.length ? " · 🏆 " + t.titulos.length : ""}</div>`).join("");
+  desenharAmistosos();
   ON.aba ||= div;
   $("on-abas").innerHTML = DIVS.map(d => `<button data-on-tab="${d}" class="${d === ON.aba ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
   const ord = ordemOn(ON.aba), iD = DIVS.indexOf(ON.aba), n = ord.length;
@@ -1865,6 +1884,55 @@ $("on-sair").onclick = async () => { await ONAPI.sair(); ON.user = null; onMostr
 
 
 /* ---------- replay dos jogos da liga online no campo de botões ---------- */
+/* ---------- amistosos da liga online ---------- */
+function garantirTimeOn(c) { let t = TIMES.find(x => x.id === c.id); if (!t) { t = { ...elencoOnline(c), div: "Liga online" }; TIMES.push(t); } return t; }
+const tecOn = uid => ON.tecnicos.find(t => t.user_id === uid);
+const dataHora = d => new Date(d).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+function desenharAmistosos() {
+  const eu = ON.eu, ams = ON.amistosos || [];
+  $("am-form").hidden = !!eu.demitido;
+  if (!eu.demitido) {
+    const vAdv = $("am-adv").value, vTec = $("am-tec").value;
+    $("am-adv").innerHTML = Object.values(ON.clubes).filter(c => c.id !== eu.clube).sort((a, b) => a.div.localeCompare(b.div) || a.nome.localeCompare(b.nome))
+      .map(c => `<option value="${esc(c.id)}">Série ${c.div} · ${esc(c.nome)}</option>`).join("");
+    if (vAdv) $("am-adv").value = vAdv;
+    const outros = ON.tecnicos.filter(t => t.user_id !== eu.user_id && t.clube);
+    $("am-tec").innerHTML = outros.map(t => `<option value="${t.user_id}">${esc(t.nome)} — ${esc(nomeOn(t.clube))}</option>`).join("") || "<option value=''>Nenhum outro técnico com clube ainda</option>";
+    if (vTec && outros.some(t => t.user_id === vTec)) $("am-tec").value = vTec;
+    if (!$("am-quando").value) { const d = new Date(Date.now() + 3600000); d.setMinutes(0, 0, 0); $("am-quando").value = new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+  }
+  const jogo = a => `${esc(nomeOn(a.casa))} × ${esc(nomeOn(a.fora))}`, quem = a => esc(tecOn(a.desafiante === eu.user_id ? a.desafiado : a.desafiante)?.nome || "técnico");
+  const secoes = [
+    ["📩 Convites para você", ams.filter(a => a.status === "pendente" && a.desafiado === eu.user_id), a => `${quem(a)} te desafiou: ${jogo(a)} · ${dataHora(a.quando)} <button data-am-sim="${a.id}">✔ Aceitar</button> <button data-am-nao="${a.id}">✖ Recusar</button>`],
+    ["⏳ Esperando resposta", ams.filter(a => a.status === "pendente" && a.desafiante === eu.user_id), a => `${jogo(a)} contra ${quem(a)} · ${dataHora(a.quando)} <button data-am-nao="${a.id}">Cancelar</button>`],
+    ["📅 Marcados", ams.filter(a => a.status === "aceito"), a => `${jogo(a)} · <b>${dataHora(a.quando)}</b>${new Date(a.quando) > new Date() ? ` <button data-am-nao="${a.id}">Cancelar</button>` : " · começando…"}`],
+    ["🔴 Ao vivo", ams.filter(a => a.status === "jogado" && aoVivo(a)), a => `<b>${jogo(a)}</b> <button class="prim" data-am-ver="${a.id}">📺 Assistir ao vivo</button>`],
+    ["✅ Últimos amistosos", ams.filter(a => a.status === "jogado" && !aoVivo(a)).slice(0, 5), a => `${esc(nomeOn(a.casa))} ${a.gc} × ${a.gf} ${esc(nomeOn(a.fora))} <span class="dica">${dataHora(a.quando)}</span> <button data-am-ver="${a.id}" style="padding:1px 7px;font-size:12px">📺</button>`],
+    ["", ams.filter(a => ["recusado", "cancelado"].includes(a.status)).slice(0, 3), a => `<span class="dica">${jogo(a)} · ${dataHora(a.quando)} — ${a.status}</span>`]
+  ];
+  $("am-lista").innerHTML = secoes.filter(([, l]) => l.length).map(([t, l, f]) => (t ? `<h3>${t}</h3>` : "") + l.map(a => `<div>${f(a)}</div>`).join("")).join("");
+}
+$("am-jogar").onclick = () => {
+  const eu = ON.eu; if (!eu?.clube) return;
+  const meu = garantirTimeOn(ON.clubes[eu.clube]), adv = garantirTimeOn(ON.clubes[$("am-adv").value]);
+  popular(); $("sel-meu").value = meu.id; $("sel-adv").value = adv.id; $("sel-mando").value = $("am-mando").value;
+  if (ON.tatica?.formacao && FORMACOES[ON.tatica.formacao]) $("sel-form").value = ON.tatica.formacao; $("sel-estilo").value = ON.tatica?.estilo || "eq";
+  ESC_TIME = null; MODO_CARREIRA = null; AMISTOSO_ON = true; abrirEscalacao("pre");
+};
+$("am-desafiar").onclick = async () => {
+  const adv = $("am-tec").value, q = $("am-quando").value;
+  if (!adv) return ($("am-msg").textContent = "Escolha um técnico.");
+  if (!q) return ($("am-msg").textContent = "Escolha o dia e a hora.");
+  try { await ONAPI.desafiar(adv, new Date(q).toISOString()); $("am-msg").textContent = "✅ Desafio enviado. O outro técnico precisa aceitar."; ON.amistosos = await ONAPI.amistosos(ON.user.id); desenharAmistosos(); }
+  catch (e) { $("am-msg").textContent = "⚠ " + (/liga_desafiar|function/.test(e.message) ? "O servidor ainda não tem amistosos: rode de novo o liga.sql no Supabase." : e.message); }
+};
+$("am-lista").onclick = async e => {
+  const sim = e.target.closest("[data-am-sim]"), nao = e.target.closest("[data-am-nao]"), ver = e.target.closest("[data-am-ver]");
+  if (ver) { const a = ON.amistosos.find(x => x.id === Number(ver.dataset.amVer)); if (a) assistirReplay(null, { ...a, id: "am" + a.id, jogado: true, titulo: "Amistoso" }); return; }
+  const b = sim || nao; if (!b) return;
+  try { await ONAPI.responder(Number(b.dataset.amSim || b.dataset.amNao), !!sim); ON.amistosos = await ONAPI.amistosos(ON.user.id); desenharAmistosos(); }
+  catch (err) { alert(err.message); }
+};
 function elencoOnline(c) {                               // usa o elenco do pacote se houver; senão gera um, sempre igual para o clube
   const t = TIMES.find(x => x.id === c.id); if (t?.jogadores?.length >= 16) return t;
   const r = semente("on" + c.id), pos = [..."GGG", ..."DDDDDDDD", ..."MMMMMMMM", ..."AAAAA"], mapa = { D: ["ZAG","LD","LE","ZAG"], M: ["VOL","MC","MEI","MC"], A: ["CA","PE","PD"] };
@@ -1872,8 +1940,8 @@ function elencoOnline(c) {                               // usa o elenco do paco
     Math.round(Math.max(40, Math.min(92, Number(c.forca) - 3 + (r() * 10 - 5)))), 18 + Math.floor(r() * 16)]);
   return { id: c.id, nome: c.nome, curto: c.sigla, cor: c.cor, cor2: c.cor2, jogadores };
 }
-function assistirReplay(jogoId) {
-  const j = ON.jogos.find(x => x.id === jogoId); if (!j || !j.jogado) return;
+function assistirReplay(jogoId, obj) {
+  const j = obj || ON.jogos.find(x => x.id === jogoId); if (!j || !j.jogado) return;
   if (J && !J.fim) { if (J.tGol) clearTimeout(J.tGol); if (J.tInt) clearTimeout(J.tInt); }
   const casaB = elencoOnline(ON.clubes[j.casa]), foraB = elencoOnline(ON.clubes[j.fora]);
   const meuId = ON.eu?.clube, euCasa = meuId === j.fora ? false : true;
@@ -1895,7 +1963,8 @@ function assistirReplay(jogoId) {
   $("vel").style.pointerEvents = vivo ? "none" : "";
   $("feed").innerHTML = ""; $("nova").hidden = !vivo; $("nova").textContent = "↩ Voltar à liga"; $("fim-rapido").disabled = vivo; $("aviso-int").style.display = "none"; $("pausa").disabled = vivo;
   $("t-casa").innerHTML = escudo(casa) + esc(casa.nome); $("t-fora").innerHTML = esc(fora.nome) + escudo(fora);
-  narrar("apito", vivo ? `🔴 AO VIVO · Série ${j.div}, rodada ${j.rodada}: ${casa.nome} x ${fora.nome}.` : `📺 Replay da liga · Série ${j.div}, rodada ${j.rodada}: ${casa.nome} x ${fora.nome}.`);
+  const onde = j.titulo || `Série ${j.div}, rodada ${j.rodada}`;
+  narrar("apito", vivo ? `🔴 AO VIVO · ${onde}: ${casa.nome} x ${fora.nome}.` : `📺 Replay · ${onde}: ${casa.nome} x ${fora.nome}.`);
   atualizarTudo();
   if (vivo) sincronizarAoVivo(); else proximoLance();
 }

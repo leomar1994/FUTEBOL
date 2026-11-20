@@ -335,4 +335,74 @@ select cron.schedule('liga-turno-2', '20 15 * * *', $$select public.liga_rodar_t
 
 do $$ begin perform public.liga_definir_turnos((select temporada from public.liga_estado where id = 1)); end $$;
 
+-- ---------- amistosos entre técnicos (não valem nada: nem tabela, nem tokens, nem diretoria) ----------
+create table if not exists public.liga_amistosos (
+  id bigserial primary key,
+  desafiante uuid not null references auth.users on delete cascade, desafiado uuid not null references auth.users on delete cascade,
+  casa text not null references public.liga_clubes, fora text not null references public.liga_clubes,
+  quando timestamptz not null, status text not null default 'pendente' check (status in ('pendente','aceito','recusado','cancelado','jogado')),
+  gc int, gf int, inicio timestamptz, fim timestamptz, criado timestamptz not null default now()
+);
+create index if not exists liga_amistosos_quando on public.liga_amistosos (status, quando);
+
+create or replace function public.liga_desafiar(p_adversario uuid, p_quando timestamptz) returns public.liga_amistosos language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); eu liga_tecnicos; ele liga_tecnicos; a liga_amistosos;
+begin
+  select * into eu from liga_tecnicos where user_id = uid;
+  select * into ele from liga_tecnicos where user_id = p_adversario;
+  if eu.clube is null then raise exception 'Você precisa estar num clube para marcar amistoso.'; end if;
+  if ele.clube is null then raise exception 'Esse técnico está sem clube.'; end if;
+  if p_adversario = uid then raise exception 'Escolha outro técnico.'; end if;
+  if p_quando < now() + interval '5 minutes' then raise exception 'Marque com pelo menos 5 minutos de antecedência.'; end if;
+  if p_quando > now() + interval '7 days' then raise exception 'Marque para no máximo 7 dias à frente.'; end if;
+  if (select count(*) from liga_amistosos where desafiante = uid and status in ('pendente','aceito')) >= 3 then raise exception 'Você já tem 3 amistosos marcados ou esperando resposta.'; end if;
+  insert into liga_amistosos (desafiante, desafiado, casa, fora, quando) values (uid, p_adversario, eu.clube, ele.clube, date_trunc('minute', p_quando)) returning * into a;
+  return a;
+end $$;
+
+create or replace function public.liga_responder_amistoso(p_id bigint, p_aceitar boolean) returns public.liga_amistosos language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); a liga_amistosos;
+begin
+  select * into a from liga_amistosos where id = p_id for update;
+  if a.id is null then raise exception 'Amistoso não encontrado.'; end if;
+  if p_aceitar then
+    if a.desafiado <> uid then raise exception 'Só o técnico convidado pode aceitar.'; end if;
+    if a.status <> 'pendente' then raise exception 'Esse convite não está mais aberto.'; end if;
+    if a.quando <= now() then raise exception 'O horário desse amistoso já passou.'; end if;
+    update liga_amistosos set status = 'aceito' where id = p_id returning * into a;
+  else                                            -- recusar (convidado) ou cancelar (qualquer um dos dois) antes do jogo
+    if uid not in (a.desafiante, a.desafiado) then raise exception 'Esse amistoso não é seu.'; end if;
+    if a.status not in ('pendente','aceito') or a.quando <= now() then raise exception 'Não dá mais para cancelar.'; end if;
+    update liga_amistosos set status = case when uid = a.desafiado and a.status = 'pendente' then 'recusado' else 'cancelado' end where id = p_id returning * into a;
+  end if;
+  return a;
+end $$;
+
+-- roda a cada minuto: amistosos aceitos cujo horário chegou ganham placar; o "ao vivo" começa no horário marcado
+create or replace function public.liga_amistosos_rodar() returns int language plpgsql security definer set search_path = public as $$
+declare a record; fc numeric; ff numeric; ec text; ef text; lc numeric; lf numeric; n int := 0;
+begin
+  update liga_amistosos set status = 'cancelado' where status = 'pendente' and quando <= now();
+  for a in select * from liga_amistosos where status = 'aceito' and quando <= now() for update skip locked loop
+    select forca into fc from liga_clubes where id = a.casa; select forca into ff from liga_clubes where id = a.fora;
+    select coalesce(estilo, 'eq') into ec from liga_taticas where user_id = a.desafiante;
+    select coalesce(estilo, 'eq') into ef from liga_taticas where user_id = a.desafiado;
+    lc := 1.3 * exp(((fc + 2.5) - ff) / 22); lf := 1.3 * exp((ff - (fc + 2.5)) / 22);
+    if ec = 'of' then lc := lc * 1.15; lf := lf * 1.12; elsif ec = 'de' then lc := lc * 0.85; lf := lf * 0.82; end if;
+    if ef = 'of' then lf := lf * 1.15; lc := lc * 1.12; elsif ef = 'de' then lf := lf * 0.85; lc := lc * 0.82; end if;
+    update liga_amistosos set gc = liga_poisson(lc), gf = liga_poisson(lf), status = 'jogado', inicio = a.quando, fim = a.quando + interval '16 minutes' where id = a.id;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+alter table public.liga_amistosos enable row level security;
+drop policy if exists ler on public.liga_amistosos; create policy ler on public.liga_amistosos for select using (true);
+grant select on public.liga_amistosos to anon, authenticated;
+revoke all on function public.liga_amistosos_rodar() from public, anon, authenticated;
+revoke all on function public.liga_desafiar(uuid, timestamptz), public.liga_responder_amistoso(bigint, boolean) from public, anon;
+grant execute on function public.liga_desafiar(uuid, timestamptz), public.liga_responder_amistoso(bigint, boolean) to authenticated;
+do $$ begin perform cron.unschedule('liga-amistosos'); exception when others then null; end $$;
+select cron.schedule('liga-amistosos', '* * * * *', $$select public.liga_amistosos_rodar()$$);
+
 -- Para testar sem esperar: select public.liga_rodar_turno(1);  (e 20 min depois, ou na hora: select public.liga_rodar_turno(2);)
