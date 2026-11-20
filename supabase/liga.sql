@@ -20,6 +20,8 @@ create table if not exists public.liga_jogos (
   gc int, gf int, jogado boolean not null default false
 );
 create index if not exists liga_jogos_tr on public.liga_jogos (temporada, rodada);
+-- turno: 1 = 12h00, 2 = 12h20 (Brasília). inicio/fim: quando o jogo começou e quando termina "ao vivo"
+alter table public.liga_jogos add column if not exists turno int, add column if not exists inicio timestamptz, add column if not exists fim timestamptz;
 create table if not exists public.liga_tecnicos (
   user_id uuid primary key references auth.users on delete cascade,
   nome text not null check (length(nome) between 1 and 30), nac text not null default '🇧🇷 Brasil',
@@ -131,6 +133,7 @@ select c.id as clube, c.div,
   coalesce(sum(case when j.casa = c.id then j.gf else j.gc end), 0)::int as gcontra
 from public.liga_clubes c
 left join public.liga_jogos j on j.jogado and (j.casa = c.id or j.fora = c.id)
+  and (j.fim is null or j.fim <= now() or current_user not in ('anon', 'authenticated'))   -- jogo ao vivo só conta na tabela quando termina
   and j.temporada = (select temporada from public.liga_estado where id = 1) and j.div = c.div
 group by c.id, c.div;
 
@@ -142,6 +145,13 @@ create or replace function public.liga_posicao(p_clube text) returns int languag
 $$;
 
 -- ---------- calendário (turno e returno, método do círculo) ----------
+-- metade dos jogos de cada divisão/rodada no 1º turno (12h00), a outra metade no 2º (12h20)
+create or replace function public.liga_definir_turnos(p_temporada int) returns void language sql security definer set search_path = public as $$
+  update liga_jogos j set turno = x.t from (
+    select id, case when row_number() over (partition by rodada, div order by id) <= ceil(count(*) over (partition by rodada, div) / 2.0) then 1 else 2 end as t
+    from liga_jogos where temporada = p_temporada) x
+  where x.id = j.id and j.turno is distinct from x.t;
+$$;
 create or replace function public.liga_gerar_calendario(p_temporada int) returns void language plpgsql security definer set search_path = public as $$
 declare v_div text; ids text[]; n int; r int; i int; a text; b text; t text;
 begin
@@ -162,6 +172,7 @@ begin
       ids := array[ids[1]] || array[ids[n]] || ids[2:n-1];   -- gira todos menos o primeiro
     end loop;
   end loop;
+  perform liga_definir_turnos(p_temporada);
 end $$;
 
 -- ---------- sorteio de gols ----------
@@ -222,14 +233,16 @@ begin
   return tec;
 end $$;
 
--- ---------- a rodada (roda sozinha todo dia às 21h de Brasília) ----------
-create or replace function public.liga_rodar_rodada() returns text language plpgsql security definer set search_path = public as $$
+-- ---------- a rodada (todo dia ao meio-dia de Brasília, em dois turnos: 12h00 e 12h20) ----------
+create or replace function public.liga_rodar_turno(p_turno int) returns text language plpgsql security definer set search_path = public as $$
 declare est liga_estado; j record; fc numeric; ff numeric; ec text; ef text; lc numeric; lf numeric; v_gc int; v_gf int;
         tec record; pos int; meta int; saldo int; nconf int; total int; ranking int;
 begin
   select * into est from liga_estado where id = 1 for update;
   if not exists (select 1 from liga_jogos where temporada = est.temporada) then perform liga_gerar_calendario(est.temporada); end if;
-  for j in select * from liga_jogos where temporada = est.temporada and rodada = est.rodada and not jogado loop
+  perform liga_definir_turnos(est.temporada);
+  -- 1º turno: só os jogos do turno 1. 2º turno: todos os que faltam (se o 1º falhou, nada fica para trás)
+  for j in select * from liga_jogos where temporada = est.temporada and rodada = est.rodada and not jogado and (p_turno >= 2 or coalesce(turno, 1) = 1) loop
     select forca into fc from liga_clubes where id = j.casa; select forca into ff from liga_clubes where id = j.fora;
     select coalesce(t2.estilo, 'eq') into ec from liga_tecnicos t1 left join liga_taticas t2 using (user_id) where t1.clube = j.casa;
     select coalesce(t2.estilo, 'eq') into ef from liga_tecnicos t1 left join liga_taticas t2 using (user_id) where t1.clube = j.fora;
@@ -237,8 +250,9 @@ begin
     if ec = 'of' then lc := lc * 1.15; lf := lf * 1.12; elsif ec = 'de' then lc := lc * 0.85; lf := lf * 0.82; end if;
     if ef = 'of' then lf := lf * 1.15; lc := lc * 1.12; elsif ef = 'de' then lf := lf * 0.85; lc := lc * 0.82; end if;
     v_gc := liga_poisson(lc); v_gf := liga_poisson(lf);
-    update liga_jogos set gc = v_gc, gf = v_gf, jogado = true where id = j.id;
+    update liga_jogos set gc = v_gc, gf = v_gf, jogado = true, inicio = now(), fim = now() + interval '16 minutes' where id = j.id;
   end loop;
+  if p_turno < 2 then return 'Turno 1 da rodada ' || est.rodada || ' começou.'; end if;
   -- diretoria de cada técnico humano
   for tec in select t.*, g.casa, g.fora, g.gc, g.gf from liga_tecnicos t
              join liga_jogos g on g.temporada = est.temporada and g.rodada = est.rodada and (g.casa = t.clube or g.fora = t.clube)
@@ -265,6 +279,9 @@ begin
   if est.rodada >= total then perform liga_fim_temporada(); else update liga_estado set rodada = rodada + 1, ultima_rodada = now() where id = 1; end if;
   return 'Rodada ' || est.rodada || ' da temporada ' || est.temporada || ' jogada.';
 end $$;
+-- joga a rodada inteira de uma vez (útil para testar)
+create or replace function public.liga_rodar_rodada() returns text language plpgsql security definer set search_path = public as $$
+begin perform liga_rodar_turno(1); return liga_rodar_turno(2); end $$;
 
 -- ---------- fim de temporada: 4 sobem e 4 caem entre cada divisão ----------
 create or replace function public.liga_fim_temporada() returns void language plpgsql security definer set search_path = public as $$
@@ -301,7 +318,7 @@ drop policy if exists ler on public.liga_tecnicos; create policy ler on public.l
 drop policy if exists minha on public.liga_taticas; create policy minha on public.liga_taticas for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 grant select on public.liga_clubes, public.liga_estado, public.liga_jogos, public.liga_tecnicos, public.liga_classificacao to anon, authenticated;
 grant select, insert, update on public.liga_taticas to authenticated;
-revoke all on function public.liga_rodar_rodada(), public.liga_fim_temporada(), public.liga_gerar_calendario(int), public.liga_gerar_propostas(uuid) from public, anon, authenticated;
+revoke all on function public.liga_rodar_turno(int), public.liga_definir_turnos(int), public.liga_rodar_rodada(), public.liga_fim_temporada(), public.liga_gerar_calendario(int), public.liga_gerar_propostas(uuid) from public, anon, authenticated;
 grant execute on function public.liga_entrar(text, text), public.liga_aceitar(text) to authenticated;
 grant execute on function public.liga_posicao(text), public.liga_poisson(numeric) to anon, authenticated;
 
@@ -309,9 +326,13 @@ grant execute on function public.liga_posicao(text), public.liga_poisson(numeric
 do $$ begin
   if not exists (select 1 from public.liga_jogos) then perform public.liga_gerar_calendario((select temporada from public.liga_estado where id = 1)); end if;
 end $$;
-do $$ begin
-  perform cron.unschedule('liga-rodada-diaria');
-exception when others then null; end $$;
-select cron.schedule('liga-rodada-diaria', '0 0 * * *', $$select public.liga_rodar_rodada()$$);   -- 00:00 UTC = 21h de Brasília
+do $$ begin perform cron.unschedule('liga-rodada-diaria'); exception when others then null; end $$;
+do $$ begin perform cron.unschedule('liga-turno-1'); exception when others then null; end $$;
+do $$ begin perform cron.unschedule('liga-turno-2'); exception when others then null; end $$;
+-- rodada todo dia ao meio-dia de Brasília (15h UTC): metade dos jogos às 12h00, a outra metade às 12h20
+select cron.schedule('liga-turno-1', '0 15 * * *', $$select public.liga_rodar_turno(1)$$);
+select cron.schedule('liga-turno-2', '20 15 * * *', $$select public.liga_rodar_turno(2)$$);
 
--- Para testar sem esperar: select public.liga_rodar_rodada();
+do $$ begin perform public.liga_definir_turnos((select temporada from public.liga_estado where id = 1)); end $$;
+
+-- Para testar sem esperar: select public.liga_rodar_turno(1);  (e 20 min depois, ou na hora: select public.liga_rodar_turno(2);)

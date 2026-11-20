@@ -241,7 +241,7 @@
     <button class="voltar" data-tela="menu">↩ Menu</button>
     <div id="on-login" class="caixa" style="max-width:460px;margin:0 auto" hidden>
       <h2>🌐 Liga online</h2>
-      <p class="dica">Todos os técnicos jogam a mesma liga. Você começa num clube sorteado e as rodadas acontecem todo dia às 21h (horário de Brasília).</p>
+      <p class="dica">Todos os técnicos jogam a mesma liga. Você começa num clube sorteado e as rodadas acontecem todo dia ao meio-dia (horário de Brasília): metade dos jogos às 12h00 e a outra metade às 12h20, para dar tempo de assistir a outros jogos ao vivo.</p>
       <div class="ft"><label>E-mail</label><input type="text" id="on-email" autocomplete="email" inputmode="email"></div>
       <div class="ft"><label>Senha</label><input type="password" id="on-senha" autocomplete="current-password" style="font:inherit;background:var(--painel2);color:var(--texto);border:1px solid var(--borda);border-radius:8px;padding:9px;width:100%"></div>
       <p style="text-align:center"><button class="prim" id="on-entrar">Entrar</button> <button id="on-criar">Criar conta</button></p>
@@ -263,7 +263,7 @@
             <div class="ft"><label>Formação</label><select id="on-form"></select></div>
             <div class="ft"><label>Estilo</label><select id="on-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo (marca mais, sofre mais)</option><option value="de">Retranca (sofre menos, marca menos)</option></select></div>
             <p><button class="prim" id="on-tatica">💾 Salvar tática</button> <span class="dica" id="on-msg-tat"></span></p></div>
-          <div class="caixa" style="margin-top:12px"><h2>Última rodada</h2><div class="res-l" id="on-res"></div></div>
+          <div class="caixa" style="margin-top:12px"><h2>Jogos da sua divisão</h2><p class="dica">🔴 = ao vivo agora (toque em 📺 Assistir). O placar só aparece quando o jogo termina.</p><div class="res-l" id="on-res"></div></div>
           <div class="caixa" style="margin-top:12px"><h2>Técnicos da liga</h2><div class="res-l" id="on-tecs"></div></div>
         </div>
         <div class="caixa"><div class="abas" id="on-abas"></div><table class="tab"><thead><tr><th>#</th><th>Clube</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr></thead><tbody id="on-tab"></tbody></table>
@@ -643,6 +643,12 @@ function fimDoLance() {
 }
 function intervalo() {
   J.tempo = 2; J.seg = 45 * 60; J.pausado = true; J.intervalo = true;
+  if (J.aoVivo) {                                            // ao vivo: o 2º tempo começa sozinho depois de 1 minuto
+    narrar("apito", `<span class="m">45'</span> Fim do primeiro tempo: ${J.casa.curto} ${J.casa.gols} × ${J.fora.gols} ${J.fora.curto}.`);
+    $("aviso-int").innerHTML = "⏸ <b>Intervalo.</b> O segundo tempo começa em 1 minuto (jogo ao vivo)."; $("aviso-int").style.display = "block";
+    clearTimeout(J.tInt); J.tInt = setTimeout(() => { if (J?.intervalo && J.pausado) alternarPausa(); }, J.aoVivo.resta ?? 60000); J.aoVivo.resta = null;
+    atualizarTudo(); return;
+  }
   narrar("apito", `<span class="m">45'</span> Fim do primeiro tempo: ${J.casa.curto} ${J.casa.gols} × ${J.fora.gols} ${J.fora.curto}.`);
   const mal = ativos(J.meu).filter(malJogando);
   const av = $("aviso-int");
@@ -939,14 +945,36 @@ $("tab-adv").onclick = () => { J.aba = "adv"; $("tab-adv").classList.add("on"); 
 $("fim-rapido").onclick = () => {                         // simula o resto sem animação
   if (!J || J.fim) return;
   if (J.intervalo) { J.intervalo = false; $("aviso-int").style.display = "none"; }
-  J.pausado = false; J.rapido = true; if (J.retomar) J.retomar(); let guarda = 0;
+  J.pausado = false; J.rapido = true; if (J.retomar) J.retomar();
+  correrAte(() => false);
+};
+function correrAte(parar) {                               // simula sem animação até parar() ou o fim do jogo
+  let guarda = 0;
   while (!J.fim && guarda++ < 5000) { if (J.anim) { const a = J.anim; J.anim = null; if (a.depois) { a.depois(); if (J.retomar) J.retomar(); if (J.anim) continue; } }
+    if (parar()) break;
     if (J.tempo === 1 && J.seg >= (45 + J.acrescimo[0]) * 60) { J.tempo = 2; J.seg = 45 * 60; J.posse = J.fora; J.dono = meio(J.fora); J.bola = { x: L / 2, y: A / 2 }; narrar("apito", `<span class="m">45'</span> Intervalo: ${J.casa.curto} ${J.casa.gols} × ${J.fora.gols} ${J.fora.curto}.`); }
     if (J.tempo === 2 && J.seg >= (90 + J.acrescimo[1]) * 60) { encerrar(); break; }
     if (J.tempo === 2) { iaSubstitui(J.adv); if (J.replay) iaSubstitui(J.meu); }
     proximoLance(); }
-};
-$("nova").onclick = () => { if (J?.tGol) clearTimeout(J.tGol); esconderGol(); const fim = J; J = null; $("pausa").disabled = false; $("pausa").textContent = "⏸ Pausar"; $("m-campo").classList.remove("on");
+}
+/* jogo da liga online AO VIVO: todo mundo vê o mesmo minuto (pelo relógio do início) */
+function alvoAoVivo() {
+  const el = Date.now() - J.aoVivo.inicio, t1 = (45 + J.acrescimo[0]) * 60 * MS_POR_SEG;
+  if (el <= t1) return { seg: el / MS_POR_SEG };
+  if (el <= t1 + 60000) return { intervalo: true, resta: t1 + 60000 - el };
+  return { seg: 45 * 60 + (el - t1 - 60000) / MS_POR_SEG };
+}
+function sincronizarAoVivo() {
+  const a = alvoAoVivo(), fim1 = () => J.tempo === 1 && J.seg >= (45 + J.acrescimo[0]) * 60;
+  J.rapido = true;
+  correrAte(() => a.intervalo ? fim1() : J.seg >= a.seg && !J.aguardando);
+  J.rapido = false;
+  if (J.fim) return;
+  if (J.retomar) J.retomar();
+  if (a.intervalo) { J.anim = null; J.aoVivo.resta = a.resta; return intervalo(); }
+  atualizarTudo(); if (!J.anim && !J.aguardando) proximoLance();
+}
+$("nova").onclick = () => { if (J?.tGol) clearTimeout(J.tGol); if (J?.tInt) clearTimeout(J.tInt); $("vel").style.pointerEvents = ""; esconderGol(); const fim = J; J = null; $("pausa").disabled = false; $("pausa").textContent = "⏸ Pausar"; $("m-campo").classList.remove("on");
   rnd = Math.random; $("abrir-esc").hidden = false;
   if (fim?.replay) tela("online"); else if (fim?.carreira) fimDoJogoCarreira(fim); else tela("inicio"); };
 // substituição do jogador
@@ -1761,30 +1789,61 @@ async function recarregarOnline() {
   desenharOnline(); onMostrar("hub");
 }
 function ordemOn(div) { return ON.classif.filter(c => c.div === div).sort((a, b) => b.p - a.p || b.v - a.v || (b.gp - b.gcontra) - (a.gp - a.gcontra) || b.gp - a.gp || a.clube.localeCompare(b.clube)); }
-function proximaRodadaEm() { const a = new Date(), p = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate() + 1)); return p; }
+/* rodada online: todo dia ao meio-dia de Brasília, metade dos jogos às 12h00 e a outra metade às 12h20 */
+const TURNO_UTC = { 1: [15, 0], 2: [15, 20] }, HORA_TURNO = { 1: "12h00", 2: "12h20" };
+function proximoTurnoEm(t) { const a = new Date(), [h, m] = TURNO_UTC[t || 1]; let p = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate(), h, m)); if (p <= a) p = new Date(p.getTime() + 86400000); return p; }
+const proximaRodadaEm = () => proximoTurnoEm(1);
+const aoVivo = j => j.jogado && j.fim && new Date(j.fim) > new Date();
+const encerrado = j => j.jogado && (!j.fim || new Date(j.fim) <= new Date());
+const faltaTxt = d => { const ms = d - new Date(), h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000); return h ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`; };
+function linhaJogoOn(j, eu) {
+  const meu = j.casa === eu.clube || j.fora === eu.clube, b = t => meu ? `<b>${t}</b>` : t;
+  if (aoVivo(j)) return `<div>${b(`🔴 ${esc(nomeOn(j.casa))} × ${esc(nomeOn(j.fora))}`)} <span class="dica">ao vivo</span> <button data-replay="${j.id}" style="padding:1px 7px;font-size:12px">📺 Assistir</button></div>`;
+  if (encerrado(j)) return `<div>${b(`${esc(nomeOn(j.casa))} ${j.gc} × ${j.gf} ${esc(nomeOn(j.fora))}`)} <button data-replay="${j.id}" title="Replay" style="padding:1px 7px;font-size:12px">📺</button></div>`;
+  return `<div>${b(`${esc(nomeOn(j.casa))} × ${esc(nomeOn(j.fora))}`)} <span class="dica">${HORA_TURNO[j.turno || 1]}</span></div>`;
+}
+function jogosOnHtml(lista, eu) {
+  return [1, 2].map(t => { const l = lista.filter(j => (j.turno || 1) === t); return l.length ? `<h3>${HORA_TURNO[t]}</h3>` + l.map(j => linhaJogoOn(j, eu)).join("") : ""; }).join("");
+}
+const chaveVivoOn = () => (ON.jogos || []).map(j => (aoVivo(j) ? "v" : encerrado(j) ? "e" : "n")).join("");
+setInterval(() => {                                        // mantém a tela da liga em dia perto da hora dos jogos
+  if (!$("online").classList.contains("on") || !ON.eu || document.hidden) return;
+  const a = new Date(), min = a.getUTCHours() * 60 + a.getUTCMinutes();
+  if (min >= 899 && min <= 940 && a.getUTCSeconds() < 30) recarregarOnline().catch(() => {});
+  else if (ON._chave !== chaveVivoOn()) desenharOnline(); else atualizarRelogioOn();
+}, 30000);
+function atualizarRelogioOn() {
+  const eu = ON.eu; if (!eu) return;
+  const meu = eu.demitido ? null : ON.jogos.find(j => j.rodada === ON.estado.rodada && !j.jogado && (j.casa === eu.clube || j.fora === eu.clube));
+  $("on-relogio").textContent = meu ? `⏱ Seu jogo é às ${HORA_TURNO[meu.turno || 1]} (Brasília) — faltam ${faltaTxt(proximoTurnoEm(meu.turno))}. Até lá, ajuste a tática.`
+    : `⏱ Rodada todo dia ao meio-dia (Brasília): metade dos jogos às 12h00 e a outra metade às 12h20. Próxima em ${faltaTxt(proximaRodadaEm())}.`;
+}
 function desenharOnline() {
   const eu = ON.eu, est = ON.estado, c = clubeOn(eu.clube || eu.ex_clube), div = eu.demitido ? eu.div : (ON.clubes[eu.clube]?.div || eu.div);
   const pos = eu.demitido ? null : ordemOn(div).findIndex(x => x.clube === eu.clube) + 1;
   const corConf = eu.conf > 60 ? "var(--verde)" : eu.conf > 30 ? "var(--amar)" : "var(--verm)";
   $("on-topo").innerHTML = `${eu.demitido ? "" : escudo(c)}<div><h2>${esc(eu.demitido ? "Sem clube" : c.nome)}</h2><div class="dica">Técnico ${esc(eu.nome)} ${esc((eu.nac || "").split(" ")[0])} · nível ${NUM_DIV[DIVS[eu.nivel]]} divisão · Série ${div} ${est.temporada} · rodada ${est.rodada}${pos ? ` · ${pos}º lugar` : ""}${(eu.titulos || []).length ? " · 🏆 " + eu.titulos.length : ""}</div></div>
     <div style="margin-left:auto" class="dica">Confiança da diretoria <span class="conf"><i style="width:${eu.conf}%;background:${corConf}"></i></span> ${eu.conf}%</div>`;
-  const prox = eu.demitido ? null : ON.jogos.find(j => j.rodada === est.rodada && !j.jogado && (j.casa === eu.clube || j.fora === eu.clube));
+  ON._chave = chaveVivoOn();
+  const doMeu = j => j.casa === eu.clube || j.fora === eu.clube;
+  const vivoMeu = eu.demitido ? null : ON.jogos.find(j => aoVivo(j) && doMeu(j));
+  const prox = eu.demitido ? null : vivoMeu || ON.jogos.find(j => j.rodada === est.rodada && !j.jogado && doMeu(j));
   if (eu.demitido) {
     $("on-prox-tit").textContent = "Sem clube";
     $("on-prox").innerHTML = (eu.avisos || []).map(a => `<p>${esc(a)}</p>`).join("") + "<h3>Propostas</h3>" + ((eu.propostas || []).length ? eu.propostas.map(p => `<p>${escudo(clubeOn(p.clube))} <b>${esc(nomeOn(p.clube))}</b> · Série ${p.div} <button data-on-prop="${esc(p.clube)}">✍ Aceitar</button></p>`).join("") : "<p class='dica'>Nenhuma proposta ainda. Elas chegam depois das rodadas.</p>") +
       `<p class="dica">Pelo seu nível, só chegam propostas da ${NUM_DIV[DIVS[eu.nivel]]} divisão ou de baixo.</p>`;
   } else if (prox) {
-    $("on-prox-tit").textContent = `Próximo jogo — rodada ${est.rodada}`;
-    $("on-prox").innerHTML = `<div class="prox"><span>${escudo(clubeOn(prox.casa))}<br>${esc(nomeOn(prox.casa))}</span><span>×</span><span>${escudo(clubeOn(prox.fora))}<br>${esc(nomeOn(prox.fora))}</span></div>` + (eu.avisos || []).map(a => `<p>${esc(a)}</p>`).join("");
+    $("on-prox-tit").textContent = vivoMeu ? `🔴 Seu jogo está AO VIVO — rodada ${prox.rodada}` : `Próximo jogo — rodada ${est.rodada}, às ${HORA_TURNO[prox.turno || 1]}`;
+    $("on-prox").innerHTML = `<div class="prox"><span>${escudo(clubeOn(prox.casa))}<br>${esc(nomeOn(prox.casa))}</span><span>×</span><span>${escudo(clubeOn(prox.fora))}<br>${esc(nomeOn(prox.fora))}</span></div>` +
+      (vivoMeu ? `<p style="text-align:center"><button class="prim" data-replay="${prox.id}">📺 Assistir ao vivo</button></p>` : "") + (eu.avisos || []).map(a => `<p>${esc(a)}</p>`).join("");
   } else { $("on-prox-tit").textContent = "Próximo jogo"; $("on-prox").innerHTML = "<p class='dica'>Sem jogo nesta rodada.</p>"; }
-  const ms = proximaRodadaEm() - new Date(), h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
-  $("on-relogio").textContent = `⏱ A próxima rodada é jogada às 21h (Brasília) — faltam ${h}h${String(m).padStart(2, "0")}. Até lá, ajuste a tática.`;
+  atualizarRelogioOn();
   $("on-form").innerHTML = Object.keys(FORMACOES).map(f => `<option>${f}</option>`).join("");
   $("on-form").value = ON.tatica?.formacao || "4-3-3"; $("on-estilo").value = ON.tatica?.estilo || "eq";
-  const ult = ON.jogos.filter(j => j.rodada === est.rodada - 1 && j.jogado && j.div === div);
-  const meuUlt = ON.jogos.find(j => j.rodada === est.rodada - 1 && j.jogado && (j.casa === (eu.clube || eu.ex_clube) || j.fora === (eu.clube || eu.ex_clube)));
-  $("on-res").innerHTML = (meuUlt ? `<p><button class="prim" data-replay="${meuUlt.id}">📺 Assistir ao meu jogo: ${esc(nomeOn(meuUlt.casa))} ${meuUlt.gc} × ${meuUlt.gf} ${esc(nomeOn(meuUlt.fora))}</button></p>` : "") +
-    (ult.map(j => { const meu = j.casa === eu.clube || j.fora === eu.clube; return `<div>${meu ? "<b>" : ""}${esc(nomeOn(j.casa))} ${j.gc} × ${j.gf} ${esc(nomeOn(j.fora))}${meu ? "</b>" : ""} <button data-replay="${j.id}" title="Assistir" style="padding:1px 7px;font-size:12px">📺</button></div>`; }).join("") || "<p class='dica'>Ainda não houve rodada nesta temporada.</p>");
+  const daRodada = r => ON.jogos.filter(j => j.rodada === r && j.div === div);
+  const atual = daRodada(est.rodada), anterior = daRodada(est.rodada - 1);
+  $("on-res").innerHTML = (atual.some(j => j.jogado) || !anterior.length ? `<h3>Rodada ${est.rodada}</h3>${jogosOnHtml(atual, eu)}` : "") +
+    (anterior.length ? `<h3>Rodada ${est.rodada - 1}</h3>${jogosOnHtml(anterior, eu)}` : "") + (!atual.some(j => j.jogado) && anterior.length ? `<h3>Rodada ${est.rodada} (próxima)</h3>${jogosOnHtml(atual, eu)}` : "");
   const humanos = new Map(ON.tecnicos.filter(t => t.clube).map(t => [t.clube, t.nome]));
   $("on-tecs").innerHTML = ON.tecnicos.slice().sort((a, b) => a.nivel - b.nivel || (b.titulos?.length || 0) - (a.titulos?.length || 0)).map(t => `<div>👔 <b>${esc(t.nome)}</b> ${esc((t.nac || "").split(" ")[0])} · ${t.demitido ? "sem clube" : esc(nomeOn(t.clube))} · nível ${NUM_DIV[DIVS[t.nivel]]}${t.titulos?.length ? " · 🏆 " + t.titulos.length : ""}</div>`).join("");
   ON.aba ||= div;
@@ -1815,6 +1874,7 @@ function elencoOnline(c) {                               // usa o elenco do paco
 }
 function assistirReplay(jogoId) {
   const j = ON.jogos.find(x => x.id === jogoId); if (!j || !j.jogado) return;
+  if (J && !J.fim) { if (J.tGol) clearTimeout(J.tGol); if (J.tInt) clearTimeout(J.tInt); }
   const casaB = elencoOnline(ON.clubes[j.casa]), foraB = elencoOnline(ON.clubes[j.fora]);
   const meuId = ON.eu?.clube, euCasa = meuId === j.fora ? false : true;
   rnd = semente("replay" + j.id);
@@ -1829,12 +1889,15 @@ function assistirReplay(jogoId) {
         roteiro: minutos.map((m, i) => ({ min: m, lado: lados[i], feito: false })),
         posse: casa, dono: null, bola: { x: L / 2, y: A / 2 }, anim: null, aba: "meu", passeDe: null, acrescimo: [1 + Math.floor(rnd() * 2), 2 + Math.floor(rnd() * 3)] };
   J.dono = meio(casa); ajustarUniformes(); posicionar(); congelarPos();
+  const vivo = aoVivo(j); if (vivo) { J.aoVivo = { inicio: new Date(j.inicio).getTime() }; J.vel = 1; }
   tela("partida"); $("abrir-esc").hidden = true;
-  $("vel").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.v === "2"));
-  $("feed").innerHTML = ""; $("nova").hidden = true; $("fim-rapido").disabled = false; $("aviso-int").style.display = "none"; $("pausa").disabled = false;
+  $("vel").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.v === String(J.vel)));
+  $("vel").style.pointerEvents = vivo ? "none" : "";
+  $("feed").innerHTML = ""; $("nova").hidden = !vivo; $("nova").textContent = "↩ Voltar à liga"; $("fim-rapido").disabled = vivo; $("aviso-int").style.display = "none"; $("pausa").disabled = vivo;
   $("t-casa").innerHTML = escudo(casa) + esc(casa.nome); $("t-fora").innerHTML = esc(fora.nome) + escudo(fora);
-  narrar("apito", `📺 Replay da liga · Série ${j.div}, rodada ${j.rodada}: ${casa.nome} x ${fora.nome}.`);
-  atualizarTudo(); proximoLance();
+  narrar("apito", vivo ? `🔴 AO VIVO · Série ${j.div}, rodada ${j.rodada}: ${casa.nome} x ${fora.nome}.` : `📺 Replay da liga · Série ${j.div}, rodada ${j.rodada}: ${casa.nome} x ${fora.nome}.`);
+  atualizarTudo();
+  if (vivo) sincronizarAoVivo(); else proximoLance();
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-replay]"); if (b) assistirReplay(Number(b.dataset.replay)); });
 
