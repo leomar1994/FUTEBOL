@@ -431,6 +431,7 @@ create table if not exists public.liga_torneio_jogos (
   gc int, gf int, pc int, pf int, jogado boolean not null default false, inicio timestamptz, fim timestamptz
 );
 create index if not exists liga_torneio_jogos_t on public.liga_torneio_jogos (torneio, rodada);
+alter table public.liga_torneio_jogos add column if not exists terceiro boolean not null default false;   -- disputa de 3º lugar no mata-mata
 
 create or replace function public.liga_torneio_cancelar(p_id bigint) returns void language plpgsql security definer set search_path = public as $$
 begin
@@ -553,18 +554,24 @@ begin
   for t in select * from liga_torneios where status = 'andamento' for update skip locked loop
     if exists (select 1 from liga_torneio_jogos where torneio = t.id and (not jogado or fim > now())) then continue; end if;
     if t.formato = 'mata' then
-      select array_agg(case when gc > gf or (gc = gf and pc > pf) then casa else fora end order by id) into vivos from liga_torneio_jogos where torneio = t.id and rodada = t.fase;
+      select array_agg(case when gc > gf or (gc = gf and pc > pf) then casa else fora end order by id) into vivos from liga_torneio_jogos where torneio = t.id and rodada = t.fase and not terceiro;
       if array_length(vivos, 1) > 1 then
         for i in 0 .. array_length(vivos, 1) / 2 - 1 loop
           insert into liga_torneio_jogos (torneio, rodada, casa, fora, quando)
           values (t.id, t.fase + 1, vivos[2 * i + 1], vivos[2 * i + 2], greatest((select max(quando) from liga_torneio_jogos where torneio = t.id) + make_interval(mins => t.intervalo), now() + interval '2 minutes'));
         end loop;
+        if array_length(vivos, 1) = 2 then            -- junto com a final: disputa de 3º lugar entre os que caíram na semifinal
+          insert into liga_torneio_jogos (torneio, rodada, casa, fora, quando, terceiro)
+          select t.id, t.fase + 1, perd[1], perd[2], (select max(quando) from liga_torneio_jogos where torneio = t.id), true
+          from (select array_agg(case when gc > gf or (gc = gf and pc > pf) then fora else casa end order by id) as perd from liga_torneio_jogos where torneio = t.id and rodada = t.fase and not terceiro) x;
+        end if;
         update liga_torneios set fase = fase + 1 where id = t.id;
         continue;
       end if;
       update liga_torneio_inscritos set posicao = 1 where torneio = t.id and clube = vivos[1];
-      update liga_torneio_inscritos set posicao = 2 where torneio = t.id and clube in (select case when gc > gf or (gc = gf and pc > pf) then fora else casa end from liga_torneio_jogos where torneio = t.id and rodada = t.fase);
-      update liga_torneio_inscritos set posicao = 3 where torneio = t.id and clube in (select case when gc > gf or (gc = gf and pc > pf) then fora else casa end from liga_torneio_jogos where torneio = t.id and rodada = t.fase - 1);
+      update liga_torneio_inscritos set posicao = 2 where torneio = t.id and clube in (select case when gc > gf or (gc = gf and pc > pf) then fora else casa end from liga_torneio_jogos where torneio = t.id and rodada = t.fase and not terceiro);
+      update liga_torneio_inscritos set posicao = 3 where torneio = t.id and clube in (select case when gc > gf or (gc = gf and pc > pf) then casa else fora end from liga_torneio_jogos where torneio = t.id and rodada = t.fase and terceiro);
+      update liga_torneio_inscritos set posicao = 4 where torneio = t.id and clube in (select case when gc > gf or (gc = gf and pc > pf) then fora else casa end from liga_torneio_jogos where torneio = t.id and rodada = t.fase and terceiro);
     else
       update liga_torneio_inscritos i set posicao = o.pos from (
         select clube, row_number() over (order by sum(p) desc, sum(sg) desc, sum(gp) desc, random()) as pos from (

@@ -280,7 +280,7 @@
             <p class="dica">Campeonatos fora do horário da liga (pré-temporada, férias, fim de semana…). Cada técnico paga a inscrição com o <b>dinheiro do clube</b> e o pote vai para os primeiros colocados. Não contam na tabela da liga nem dão tokens.</p>
             <details id="tn-criar"><summary><b>➕ Criar torneio</b></summary>
               <div class="ft"><label>Nome</label><input type="text" id="tn-nome" maxlength="40" placeholder="Ex.: Copa de Verão"></div>
-              <div class="ft"><label>Formato</label><select id="tn-formato"><option value="mata">Mata-mata (jogo único, empate → pênaltis)</option><option value="pontos">Pontos corridos (todos contra todos)</option></select></div>
+              <div class="ft"><label>Formato</label><select id="tn-formato"><option value="mata">Mata-mata (jogo único, empate → pênaltis; tem disputa de 3º lugar)</option><option value="pontos">Pontos corridos (todos contra todos)</option></select></div>
               <div class="ft"><label>Vagas</label><select id="tn-vagas"></select></div>
               <div class="ft"><label>Inscrição (R$ mi)</label><input type="text" id="tn-taxa" inputmode="decimal" value="1"></div>
               <div class="ft"><label>Prêmio</label><select id="tn-premio"></select></div>
@@ -1941,15 +1941,15 @@ function desenharAmistosos() {
   $("am-lista").innerHTML = secoes.filter(([, l]) => l.length).map(([t, l, f]) => (t ? `<h3>${t}</h3>` : "") + l.map(a => `<div>${f(a)}</div>`).join("")).join("");
 }
 /* ---------- torneios dos técnicos ---------- */
-const PREMIOS = { "100": [100], "70/30": [70, 30], "60/30/10": [60, 30, 10], "50/25/15/10": [50, 25, 15, 10] };
-const premioPadrao = v => v <= 4 ? "70/30" : v <= 8 ? "60/30/10" : "50/25/15/10";
+const PREMIOS = { "65/20/10/5": [65, 20, 10, 5], "100": [100], "70/30": [70, 30], "60/30/10": [60, 30, 10], "50/25/15/10": [50, 25, 15, 10] };
+const premioPadrao = (v, f = $("tn-formato").value) => f === "mata" ? "65/20/10/5" : v <= 4 ? "70/30" : v <= 8 ? "60/30/10" : "50/25/15/10";
 const premioTxt = p => p.map((x, i) => `${i + 1}º ${x}%`).join(" · ");
 function opcoesTorneio() {
-  const f = $("tn-formato").value, vs = f === "mata" ? [4, 8, 16] : [4, 6, 8], vAnt = Number($("tn-vagas").value);
+  const f = $("tn-formato").value, vs = f === "mata" ? [4, 8, 16] : [4, 6, 8], vAnt = Number($("tn-vagas").value), fAnt = $("tn-formato").dataset.ant || f; $("tn-formato").dataset.ant = f;
   $("tn-vagas").innerHTML = vs.map(v => `<option value="${v}">${v} clubes</option>`).join(""); if (vs.includes(vAnt)) $("tn-vagas").value = vAnt;
   const v = Number($("tn-vagas").value), pAnt = $("tn-premio").value;
   $("tn-premio").innerHTML = Object.entries(PREMIOS).filter(([, l]) => l.length <= Math.min(4, v)).map(([k, l]) => `<option value="${k}">${premioTxt(l)}${k === premioPadrao(v) ? " (padrão)" : ""}</option>`).join("");
-  $("tn-premio").value = PREMIOS[pAnt] && PREMIOS[pAnt].length <= Math.min(4, v) && pAnt !== premioPadrao(vAnt) ? pAnt : premioPadrao(v);
+  $("tn-premio").value = PREMIOS[pAnt] && PREMIOS[pAnt].length <= Math.min(4, v) && pAnt !== premioPadrao(vAnt, fAnt) ? pAnt : premioPadrao(v);
 }
 $("tn-formato").onchange = opcoesTorneio; $("tn-vagas").onchange = opcoesTorneio;
 function desenharTorneios() {
@@ -1961,8 +1961,8 @@ function desenharTorneios() {
   const nomeIns = i => `${esc(nomeOn(i.clube))}${i.user_id ? ` <span class="dica">(${esc(tecOn(i.user_id)?.nome || "técnico")})</span>` : " <span class='dica'>🤖</span>"}`;
   const cab = t => `<h3>${esc(t.nome)}${meu(t) ? " ⭐" : ""}</h3><div class="dica">${t.formato === "mata" ? "Mata-mata" : "Pontos corridos"} · ${t.vagas} clubes · inscrição ${dinheiro(Number(t.taxa))} · pote <b>${dinheiro(Number(t.pote))}</b> · ${premioTxt(t.premio)} · criado por ${esc(tecOn(t.criador)?.nome || "técnico")}</div>`;
   const jogosHtml = t => { const js = D.jogos.filter(j => j.torneio === t.id), rods = [...new Set(js.map(j => j.rodada))];
-    return rods.map(r => { const l = js.filter(j => j.rodada === r), nome = t.formato === "mata" ? ({ 1: "Final", 2: "Semifinal", 4: "Quartas", 8: "Oitavas" }[l.length] || `Rodada ${r}`) : `Rodada ${r}`;
-      return `<div class="dica" style="margin-top:4px"><b>${nome}</b> · ${dataHora(l[0].quando)}</div>` + l.map(j => { const eu2 = j.casa === eu.clube || j.fora === eu.clube, b = x => eu2 ? `<b>${x}</b>` : x;
+    return rods.map(r => { const l = js.filter(j => j.rodada === r).sort((a, b) => a.terceiro - b.terceiro), nome = t.formato === "mata" ? ({ 1: "Final", 2: "Semifinal", 4: "Quartas", 8: "Oitavas" }[l.filter(j => !j.terceiro).length] || `Rodada ${r}`) : `Rodada ${r}`;
+      return `<div class="dica" style="margin-top:4px"><b>${nome}${l.some(j => j.terceiro) ? " e disputa de 3º lugar" : ""}</b> · ${dataHora(l[0].quando)}</div>` + l.map(j => { const eu2 = j.casa === eu.clube || j.fora === eu.clube, b = x => (j.terceiro ? "🥉 " : "") + (eu2 ? `<b>${x}</b>` : x);
         if (aoVivo(j)) return `<div>${b(`🔴 ${esc(nomeOn(j.casa))} × ${esc(nomeOn(j.fora))}`)} <button data-tn-ver="${j.id}" style="padding:1px 7px;font-size:12px">📺 Assistir</button></div>`;
         if (encerrado(j)) return `<div>${b(`${esc(nomeOn(j.casa))} ${j.gc} × ${j.gf} ${esc(nomeOn(j.fora))}`)}${j.pc != null ? ` <span class="dica">(pên. ${j.pc}–${j.pf})</span>` : ""} <button data-tn-ver="${j.id}" style="padding:1px 7px;font-size:12px">📺</button></div>`;
         return `<div>${b(`${esc(nomeOn(j.casa))} × ${esc(nomeOn(j.fora))}`)}</div>`; }).join(""); }).join(""); };
