@@ -186,7 +186,7 @@
     <div class="colunas" style="margin-top:12px">
       <div>
         <div class="caixa"><h2 id="c-prox-tit">Próximo jogo</h2><div id="c-prox"></div>
-          <p><button class="prim" id="c-jogar">▶ Jogar a partida</button> <button id="c-simular">⏭ Simular o jogo</button></p></div>
+          <p><button class="prim" id="c-jogar">▶ Jogar a partida</button> <button id="c-simular">⏭ Simular o jogo</button> <button id="c-esc">📋 Escalação</button></p><p class="dica" id="c-esc-info"></p></div>
         <div class="caixa" style="margin-top:12px"><h2>Resultados da rodada</h2><div class="res-l" id="c-res"></div></div>
         <div class="caixa" style="margin-top:12px"><h2>💰 Finanças</h2><div id="c-fin"></div>
           <p><button id="c-elenco">👥 Elenco e vendas</button> <button class="prim" id="c-mercado">🛒 Mercado de transferências</button></p><div id="c-ofertas"></div></div>
@@ -806,6 +806,7 @@ function abrirEscalacao(modo) {
   $("esc-cancelar").hidden = modo !== "pre";
   $("esc-ajuda").textContent = modo === "pre" ? "Arraste os botões no campo para mudar as posições. Arraste um jogador da lista para cima de um botão (ou um botão para cima de outro) para trocar quem joga."
     : `Durante o jogo: arraste os botões para mudar posições e a formação. Trocar um titular por um reserva conta como substituição (${t.subs} de 5 usadas).`;
+  if (ESC_SALVAR) { $("esc-ok").textContent = "✔ Salvar escalação"; $("esc-ajuda").textContent = "Monte o time para o próximo jogo. Arraste os botões para mudar as posições; arraste um jogador da lista para cima de um botão para trocar quem joga. A escalação salva vale para jogar a partida e também para simular."; }
   desenharEscalacao(); $("m-esc").classList.add("on");
 }
 const timeEsc = () => ESC_MODO === "pre" ? ESC_TIME : J.meu;
@@ -888,10 +889,12 @@ $("esc-auto").onclick = () => {
 };
 $("esc-ok").onclick = () => {
   $("m-esc").classList.remove("on");
+  if (ESC_SALVAR) { ESC_SALVAR = false; guardarTatica(ESC_TIME); MODO_CARREIRA = null; ESC_TIME = null; return abrirCarreira(); }
   if (ESC_MODO === "pre") { if ($("sel-meu").value === $("sel-adv").value) return alert("Escolha dois times diferentes."); if (MODO_CARREIRA && C) guardarTatica(ESC_TIME); iniciarPartida(); }
   else { atualizarTudo(); }
 };
-$("esc-cancelar").onclick = () => { $("m-esc").classList.remove("on"); MODO_CARREIRA = null; };
+$("esc-cancelar").onclick = () => { $("m-esc").classList.remove("on"); MODO_CARREIRA = null; ESC_SALVAR = false; ESC_TIME = null; };
+let ESC_SALVAR = false;
 
 /* ===================== controles ===================== */
 function popular() {
@@ -1084,7 +1087,7 @@ function metaDiretoria(div, clube) {
   return rank <= 4 ? (div === "A" ? "brigar pelo título" : "o acesso") : rank <= 12 ? "uma campanha tranquila no meio da tabela" : "fugir do rebaixamento";
 }
 function placarSimulado(casa, fora) {                    // gols por Poisson a partir da força dos times
-  const fc = forcaTime(timePorId(casa)) + 2.5, ff = forcaTime(timePorId(fora));
+  const fc = forcaEscalada(casa) + 2.5, ff = forcaEscalada(fora);
   const pois = l => { let k = 0, p = Math.exp(-l), s = p, u = rnd(); while (u > s && k < 9) { k++; p *= l / k; s += p; } return k; };
   return [pois(1.3 * Math.exp((fc - ff) / 22)), pois(1.3 * Math.exp((ff - fc) / 22))];
 }
@@ -1184,7 +1187,8 @@ function abrirCarreira() {
   $("c-topo").innerHTML = `${escudo(t)}<div><h2>${esc(tec.demitido ? "Sem clube" : t.nome)}</h2><div class="dica">Técnico ${esc(tec.nome)} ${esc((tec.nac || "").split(" ")[0])} · nível ${NUM_DIV[DIVS[tec.nivel]]} divisão · ${NOME_DIV[tec.div]} ${C.temporada} · rodada ${Math.min(C.rodada + 1, total)} de ${total}${tec.demitido ? "" : ` · ${pos}º lugar`}${tec.titulos.length ? " · 🏆 " + tec.titulos.length : ""}</div></div>
     <div style="margin-left:auto" class="dica">Confiança da diretoria <span class="conf"><i style="width:${tec.conf}%;background:${corConf}"></i></span> ${tec.conf}%</div>`;
   const j = jogoDe(tec), decidido = j && C.pend[chaveJogo(j)];
-  $("c-jogar").hidden = !j || !!decidido; $("c-simular").hidden = false;
+  $("c-jogar").hidden = !j || !!decidido; $("c-simular").hidden = false; $("c-esc").hidden = !!tec.demitido;
+  $("c-esc-info").textContent = tec.demitido ? "" : tec.tatica ? `Escalação salva: ${tec.tatica.formacao} · força ${forcaEscalada(tec.clube).toFixed(1)} (o melhor 11 possível teria ${forcaTime(t).toFixed(1)})` : "Sem escalação salva: o time joga com os 11 melhores.";
   if (tec.demitido) {
     $("c-prox-tit").textContent = "Sem clube";
     $("c-prox").innerHTML = `<p>${esc(tec.avisos[0] || "")}</p><h3>Propostas</h3>` + (tec.propostas.length ? tec.propostas.map((p, i) => `<p>${escudo(timePorId(p.id))} <b>${esc(nomeTime(p.id))}</b> · ${NOME_DIV[p.div]} · ${posicao(C.ligas[p.div], p.id)}º <button data-prop="${i}">✍ Aceitar</button></p>`).join("") : "<p class='dica'>Nenhuma proposta ainda. Espere a próxima rodada.</p>") +
@@ -1214,6 +1218,18 @@ $("c-jogar").onclick = () => {
   $("sel-meu").value = tec.clube; $("sel-adv").value = eu ? fora : casa; $("sel-mando").value = eu ? "casa" : "fora";
   ESC_TIME = null; MODO_CARREIRA = { rodada: C.rodada }; abrirEscalacao("pre");
 };
+$("c-esc").onclick = () => {
+  const tec = T(), j = jogoDe(tec); popular();
+  $("sel-meu").value = tec.clube; if (j) { const eu = j[0] === tec.clube; $("sel-adv").value = eu ? j[1] : j[0]; $("sel-mando").value = eu ? "casa" : "fora"; }
+  ESC_TIME = null; ESC_SALVAR = true; MODO_CARREIRA = { rodada: C.rodada }; abrirEscalacao("pre");
+};
+function forcaEscalada(id) {                              // força do time com a escalação salva pelo técnico (para simular)
+  const tec = C && C.tecnicos.find(x => !x.demitido && x.clube === id), t = timePorId(id);
+  if (!tec?.tatica) return forcaTime(t);
+  const xi = tec.tatica.jog.map(s => [s, t.jogadores.find(j => j[0] === s.nome)]).filter(x => x[1]);
+  if (xi.length < 11) return forcaTime(t);
+  return xi.reduce((a, [s, j]) => a + j[2] - ((PARECE[s.papel] || []).indexOf(j[1]) === 0 ? 0 : (PARECE[s.papel] || []).includes(j[1]) ? 3 : 9), 0) / 11;
+}
 function fimDoJogoCarreira(fim) { decidirMeuJogo([fim.casa.gols, fim.fora.gols]); }
 function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
 function aplicarTatica(t, tat) {                         // repete a escalação da última partida (quem ainda estiver no elenco)
