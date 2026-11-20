@@ -263,6 +263,12 @@
             <div class="ft"><label>Formação</label><select id="on-form"></select></div>
             <div class="ft"><label>Estilo</label><select id="on-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo (marca mais, sofre mais)</option><option value="de">Retranca (sofre menos, marca menos)</option></select></div>
             <p><button class="prim" id="on-tatica">💾 Salvar tática</button> <span class="dica" id="on-msg-tat"></span></p></div>
+          <div class="caixa" style="margin-top:12px" id="el-on-box"><h2>👥 Elenco e contratos</h2>
+            <p class="dica" id="el-on-info"></p><div style="overflow-x:auto"><table class="tab"><thead><tr><th>Pos</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Salário/rodada</th><th>Contrato</th><th></th></tr></thead><tbody id="el-on-lista"></tbody></table></div></div>
+          <div class="caixa" style="margin-top:12px" id="lei-box"><h2>🔨 Leilão</h2>
+            <p class="dica">Cada lance custa <b>1 token</b> e reinicia o cronômetro (12 h). Quem der o último lance quando o tempo acabar leva o jogador e passa a pagar o salário dele. Quem colocou o jogador no leilão recebe 50% dos tokens gastos. Tokens: vitória na liga dá 2, empate dá 1.</p>
+            <div class="ft"><label>Posição</label><select id="lei-pos"><option value="">Todas</option></select></div>
+            <div class="res-l" id="lei-lista"></div></div>
           <div class="caixa" style="margin-top:12px" id="am-box"><h2>🤝 Amistosos</h2>
             <p class="dica">Para jogar em outro horário. Amistoso não vale nada: não conta na tabela, não dá tokens e não mexe com a diretoria.</p>
             <div id="am-form">
@@ -1782,7 +1788,7 @@ const ONAPI = {
   async sair() { await SB.auth.signOut(); },
   async tudo() {
     const ok = r => { if (r.error) throw r.error; return r.data; };
-    const [clubes, estado, tecnicos, classif] = await Promise.all([SB.from("liga_clubes").select("*"), SB.from("liga_estado").select("*").eq("id", 1).single(), SB.from("liga_tecnicos").select("user_id,nome,nac,clube,ex_clube,div,nivel,conf,demitido,propostas,titulos,avisos"), SB.from("liga_classificacao").select("*")]);
+    const [clubes, estado, tecnicos, classif] = await Promise.all([SB.from("liga_clubes").select("*"), SB.from("liga_estado").select("*").eq("id", 1).single(), SB.from("liga_tecnicos").select("*"), SB.from("liga_classificacao").select("*")]);
     const est = ok(estado);
     const jogos = ok(await SB.from("liga_jogos").select("*").eq("temporada", est.temporada).in("rodada", [est.rodada, est.rodada - 1]));
     return { clubes: ok(clubes), estado: est, tecnicos: ok(tecnicos), classif: ok(classif), jogos };
@@ -1801,6 +1807,11 @@ const ONAPI = {
     const [i, j] = await Promise.all([SB.from("liga_torneio_inscritos").select("*").in("torneio", ids), SB.from("liga_torneio_jogos").select("*").in("torneio", ids).order("id")]);
     return { torneios: t.data, inscritos: i.data || [], jogos: j.data || [] };
   },
+  async elencos(ids) { const r = await SB.from("liga_jogadores").select("*").in("clube", ids).order("forca", { ascending: false }); return r.error ? [] : r.data; },
+  async leiloes() { const r = await SB.from("liga_leiloes").select("*, j:liga_jogadores(*)").eq("status", "aberto").order("fim").limit(200); return r.error ? [] : r.data; },
+  async leiloar(id) { const r = await SB.rpc("liga_leiloar", { p_jogador: id }); if (r.error) throw r.error; },
+  async lance(id) { const r = await SB.rpc("liga_lance", { p_leilao: id }); if (r.error) throw r.error; return r.data; },
+  async renovar(id, anos) { const r = await SB.rpc("liga_renovar", { p_jogador: id, p_anos: anos }); if (r.error) throw r.error; },
   async criarTorneio(o) { const r = await SB.rpc("liga_criar_torneio", o); if (r.error) throw r.error; return r.data; },
   async inscrever(id) { const r = await SB.rpc("liga_inscrever_torneio", { p_id: id }); if (r.error) throw r.error; },
   async sairTorneio(id) { const r = await SB.rpc("liga_sair_torneio", { p_id: id }); if (r.error) throw r.error; },
@@ -1829,6 +1840,8 @@ async function recarregarOnline() {
   ON.tatica = await ONAPI.minhaTatica(ON.user.id);
   ON.amistosos = await ONAPI.amistosos(ON.user.id).catch(() => []);
   ON.tn = await ONAPI.torneios().catch(() => ({ torneios: [], inscritos: [], jogos: [] }));
+  ON.elencos = {}; ON.leiloes = await ONAPI.leiloes().catch(() => []);
+  if (ON.eu.clube) await carregarElencos([ON.eu.clube]);
   desenharOnline(); onMostrar("hub");
 }
 function ordemOn(div) { return ON.classif.filter(c => c.div === div).sort((a, b) => b.p - a.p || b.v - a.v || (b.gp - b.gcontra) - (a.gp - a.gcontra) || b.gp - a.gp || a.clube.localeCompare(b.clube)); }
@@ -1856,7 +1869,7 @@ setInterval(() => {                                        // mantém a tela da 
     || (ON.tn?.jogos || []).some(x => !x.jogado && new Date(x.quando) <= a) || (ON.tn?.torneios || []).some(x => x.status === "inscricoes" && new Date(x.inicio) <= a)
     || (ON.tn?.torneios || []).some(x => x.status === "andamento" && !(ON.tn.jogos || []).some(j => j.torneio === x.id && !encerrado(j)));
   if ((min >= 899 && min <= 940 && a.getUTCSeconds() < 30) || amDevido) recarregarOnline().catch(() => {});
-  else if (ON._chave !== chaveVivoOn()) desenharOnline(); else atualizarRelogioOn();
+  else if (ON._chave !== chaveVivoOn()) desenharOnline(); else { atualizarRelogioOn(); desenharLeilao(); }
 }, 30000);
 function atualizarRelogioOn() {
   const eu = ON.eu; if (!eu) return;
@@ -1868,7 +1881,7 @@ function desenharOnline() {
   const eu = ON.eu, est = ON.estado, c = clubeOn(eu.clube || eu.ex_clube), div = eu.demitido ? eu.div : (ON.clubes[eu.clube]?.div || eu.div);
   const pos = eu.demitido ? null : ordemOn(div).findIndex(x => x.clube === eu.clube) + 1;
   const corConf = eu.conf > 60 ? "var(--verde)" : eu.conf > 30 ? "var(--amar)" : "var(--verm)";
-  $("on-topo").innerHTML = `${eu.demitido ? "" : escudo(c)}<div><h2>${esc(eu.demitido ? "Sem clube" : c.nome)}</h2><div class="dica">Técnico ${esc(eu.nome)} ${esc((eu.nac || "").split(" ")[0])} · nível ${NUM_DIV[DIVS[eu.nivel]]} divisão · Série ${div} ${est.temporada} · rodada ${est.rodada}${pos ? ` · ${pos}º lugar` : ""}${!eu.demitido && ON.clubes[eu.clube]?.caixa != null ? ` · 💰 caixa ${dinheiro(Number(ON.clubes[eu.clube].caixa))}` : ""}${(eu.titulos || []).length ? " · 🏆 " + eu.titulos.length : ""}</div></div>
+  $("on-topo").innerHTML = `${eu.demitido ? "" : escudo(c)}<div><h2>${esc(eu.demitido ? "Sem clube" : c.nome)}</h2><div class="dica">Técnico ${esc(eu.nome)} ${esc((eu.nac || "").split(" ")[0])} · nível ${NUM_DIV[DIVS[eu.nivel]]} divisão · Série ${div} ${est.temporada} · rodada ${est.rodada}${pos ? ` · ${pos}º lugar` : ""}${!eu.demitido && ON.clubes[eu.clube]?.caixa != null ? ` · 💰 caixa ${dinheiro(Number(ON.clubes[eu.clube].caixa))}` : ""}${eu.tokens != null ? ` · 🪙 ${eu.tokens} tokens` : ""}${(eu.titulos || []).length ? " · 🏆 " + eu.titulos.length : ""}</div></div>
     <div style="margin-left:auto" class="dica">Confiança da diretoria <span class="conf"><i style="width:${eu.conf}%;background:${corConf}"></i></span> ${eu.conf}%</div>`;
   ON._chave = chaveVivoOn();
   const doMeu = j => j.casa === eu.clube || j.fora === eu.clube;
@@ -1892,7 +1905,7 @@ function desenharOnline() {
     (anterior.length ? `<h3>Rodada ${est.rodada - 1}</h3>${jogosOnHtml(anterior, eu)}` : "") + (!atual.some(j => j.jogado) && anterior.length ? `<h3>Rodada ${est.rodada} (próxima)</h3>${jogosOnHtml(atual, eu)}` : "");
   const humanos = new Map(ON.tecnicos.filter(t => t.clube).map(t => [t.clube, t.nome]));
   $("on-tecs").innerHTML = ON.tecnicos.slice().sort((a, b) => a.nivel - b.nivel || (b.titulos?.length || 0) - (a.titulos?.length || 0)).map(t => `<div>👔 <b>${esc(t.nome)}</b> ${esc((t.nac || "").split(" ")[0])} · ${t.demitido ? "sem clube" : esc(nomeOn(t.clube))} · nível ${NUM_DIV[DIVS[t.nivel]]}${t.titulos?.length ? " · 🏆 " + t.titulos.length : ""}</div>`).join("");
-  desenharAmistosos(); desenharTorneios();
+  desenharAmistosos(); desenharTorneios(); desenharElencoOn(); desenharLeilao();
   ON.aba ||= div;
   $("on-abas").innerHTML = DIVS.map(d => `<button data-on-tab="${d}" class="${d === ON.aba ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
   const ord = ordemOn(ON.aba), iD = DIVS.indexOf(ON.aba), n = ord.length;
@@ -1913,7 +1926,49 @@ $("on-sair").onclick = async () => { await ONAPI.sair(); ON.user = null; onMostr
 
 /* ---------- replay dos jogos da liga online no campo de botões ---------- */
 /* ---------- amistosos da liga online ---------- */
-function garantirTimeOn(c) { let t = TIMES.find(x => x.id === c.id); if (!t) { t = { ...elencoOnline(c), div: "Liga online" }; TIMES.push(t); } return t; }
+function garantirTimeOn(c) { const id = "on_" + c.id; let t = TIMES.find(x => x.id === id); if (!t) { t = { id, div: "Liga online" }; TIMES.push(t); } Object.assign(t, elencoOnline(c), { id, div: "Liga online" }); return t; }
+async function carregarElencos(ids) {
+  const falta = ids.filter(id => id && !ON.elencos?.[id]); if (!falta.length) return;
+  ON.elencos ||= {}; const l = await ONAPI.elencos(falta).catch(() => []);
+  for (const id of falta) ON.elencos[id] = l.filter(j => j.clube === id);
+}
+/* ---------- elenco, contratos e leilão ---------- */
+function desenharElencoOn() {
+  const eu = ON.eu, temp = ON.estado.temporada;
+  $("el-on-box").hidden = !!eu.demitido; if (eu.demitido) return;
+  const l = ON.elencos?.[eu.clube] || [], ordem = ["GOL","ZAG","LD","LE","VOL","MC","MEI","PE","PD","CA"];
+  if (!l.length) { $("el-on-info").textContent = "Os jogadores ainda não estão no servidor (rode o liga.sql atualizado no Supabase)."; $("el-on-lista").innerHTML = ""; return; }
+  const folha = l.reduce((a, j) => a + Number(j.salario), 0), vencem = l.filter(j => j.contrato_ate <= temp).length;
+  $("el-on-info").innerHTML = `${l.length} jogadores · folha ${dinheiro(folha)} por rodada · caixa ${dinheiro(Number(ON.clubes[eu.clube]?.caixa || 0))}${vencem ? ` · <span style="color:var(--verm)">${vencem} contrato(s) vencem no fim desta temporada e vão para o leilão se não renovar</span>` : ""}`;
+  $("el-on-lista").innerHTML = l.slice().sort((a, b) => ordem.indexOf(a.pos) - ordem.indexOf(b.pos) || b.forca - a.forca).map(j => { const vence = j.contrato_ate <= temp;
+    return `<tr><td>${j.pos}</td><td>${esc(j.nome)}</td><td>${j.idade}</td><td><b>${j.forca}</b></td><td>${dinheiro(Number(j.salario))}</td><td style="${vence ? "color:var(--verm)" : ""}">até ${j.contrato_ate}${vence ? " ⚠" : ""}</td>
+      <td style="white-space:nowrap">${j.contrato_ate < temp + 2 ? `<button data-ren="${j.id}" style="padding:2px 8px">✍ Renovar</button> ` : ""}<button data-lei="${j.id}" style="padding:2px 8px">🔨 Leiloar</button></td></tr>`; }).join("");
+}
+const valorOn = (f, i) => Math.round(0.3 * Math.pow(1.13, f - 50) * (i <= 21 ? 1.4 : i <= 27 ? 1.2 : i <= 30 ? 1 : i <= 33 ? .6 : .3) * 100) / 100;
+$("el-on-lista").onclick = async e => {
+  const ren = e.target.closest("[data-ren]"), lei = e.target.closest("[data-lei]"), j = (ON.elencos?.[ON.eu.clube] || []).find(x => x.id === Number((ren || lei)?.dataset.ren || (ren || lei)?.dataset.lei)); if (!j) return;
+  try {
+    if (ren) { const luva = Math.round(valorOn(j.forca, j.idade) * 0.15 * 100) / 100, r = prompt(`Renovar ${j.nome} por quantas temporadas? (1, 2 ou 3)\nLuvas: ${dinheiro(luva)} por temporada, pagas agora. O salário sobe 10%.`, "2");
+      if (!r) return; await ONAPI.renovar(j.id, Number(r)); }
+    else { if (!confirm(`Colocar ${j.nome} (${j.pos}, força ${j.forca}) no leilão?\nEle sai do elenco agora. Se ninguém der lance em 24 h, ele volta. Você recebe 50% dos tokens gastos nos lances.`)) return; await ONAPI.leiloar(j.id); }
+    ON.elencos[ON.eu.clube] = null; await recarregarOnline();
+  } catch (err) { alert(err.message); }
+};
+function desenharLeilao() {
+  const eu = ON.eu, l = (ON.leiloes || []).filter(x => x.j && (!$("lei-pos").value || x.j.pos === $("lei-pos").value));
+  if ($("lei-pos").options.length < 2) $("lei-pos").innerHTML = `<option value="">Todas</option>` + POS.map(p => `<option>${p}</option>`).join("");
+  const resta = f => { const ms = new Date(f) - new Date(); if (ms <= 0) return "terminando…"; const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000); return h ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`; };
+  $("lei-lista").innerHTML = (l.length ? `<p class="dica">${l.length} jogador(es) no leilão · você tem <b>🪙 ${eu.tokens ?? 0}</b> tokens</p>` : "<p class='dica'>Nenhum jogador no leilão agora. Contratos vencidos entram aqui no fim da temporada, e os técnicos podem leiloar jogadores do elenco.</p>") +
+    l.map(x => { const j = x.j, meu = x.vendedor === eu.user_id, ultimoEu = x.ultimo === eu.user_id;
+      return `<div style="margin:6px 0"><b>${j.pos} · ${esc(j.nome)}</b> · ${j.idade} anos · força <b>${j.forca}</b> · salário ${dinheiro(Number(j.salario))}/rodada
+        <div class="dica">${x.motivo === "contrato" ? `contrato vencido (${esc(nomeOn(x.origem))})` : `colocado por ${esc(tecOn(x.vendedor)?.nome || "técnico")} (${esc(nomeOn(x.origem))})`} · ${x.lances} lance(s)${x.ultimo ? ` · último: <b>${esc(tecOn(x.ultimo)?.nome || "técnico")}</b>` : ""} · termina em <b>${resta(x.fim)}</b></div>
+        ${eu.demitido ? "" : meu ? "<span class='dica'>Seu jogador</span>" : ultimoEu ? "<span class='dica' style='color:var(--verde)'>✔ O último lance é seu</span>" : `<button data-lance="${x.id}" ${(eu.tokens || 0) < 1 ? "disabled" : ""}>🔨 Dar lance (1 🪙)</button>`}</div>`; }).join("");
+}
+$("lei-pos").onchange = desenharLeilao;
+$("lei-lista").onclick = async e => {
+  const b = e.target.closest("[data-lance]"); if (!b) return; b.disabled = true;
+  try { await ONAPI.lance(Number(b.dataset.lance)); await recarregarOnline(); } catch (err) { alert(err.message); b.disabled = false; }
+};
 const tecOn = uid => ON.tecnicos.find(t => t.user_id === uid);
 const dataHora = d => new Date(d).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 function desenharAmistosos() {
@@ -2000,8 +2055,9 @@ $("tn-lista").onclick = async e => {
     await recarregarOnline();
   } catch (err) { alert(err.message); }
 };
-$("am-jogar").onclick = () => {
+$("am-jogar").onclick = async () => {
   const eu = ON.eu; if (!eu?.clube) return;
+  await carregarElencos([eu.clube, $("am-adv").value]);
   const meu = garantirTimeOn(ON.clubes[eu.clube]), adv = garantirTimeOn(ON.clubes[$("am-adv").value]);
   popular(); $("sel-meu").value = meu.id; $("sel-adv").value = adv.id; $("sel-mando").value = $("am-mando").value;
   if (ON.tatica?.formacao && FORMACOES[ON.tatica.formacao]) $("sel-form").value = ON.tatica.formacao; $("sel-estilo").value = ON.tatica?.estilo || "eq";
@@ -2021,15 +2077,17 @@ $("am-lista").onclick = async e => {
   try { await ONAPI.responder(Number(b.dataset.amSim || b.dataset.amNao), !!sim); ON.amistosos = await ONAPI.amistosos(ON.user.id); desenharAmistosos(); }
   catch (err) { alert(err.message); }
 };
-function elencoOnline(c) {                               // usa o elenco do pacote se houver; senão gera um, sempre igual para o clube
+function elencoOnline(c) {                               // elenco do servidor; sem ele, o do pacote; senão um gerado, sempre igual para o clube
+  const sv = ON.elencos?.[c.id]; if (sv?.length >= 11) return { id: c.id, nome: c.nome, curto: c.sigla, cor: c.cor, cor2: c.cor2, jogadores: sv.map(j => [j.nome, j.pos, j.forca, j.idade]) };
   const t = TIMES.find(x => x.id === c.id); if (t?.jogadores?.length >= 16) return t;
   const r = semente("on" + c.id), pos = [..."GGG", ..."DDDDDDDD", ..."MMMMMMMM", ..."AAAAA"], mapa = { D: ["ZAG","LD","LE","ZAG"], M: ["VOL","MC","MEI","MC"], A: ["CA","PE","PD"] };
   const jogadores = pos.map((x, k) => [`${PRIMEIROS[Math.floor(r() * PRIMEIROS.length)]} ${SOBRENOMES[Math.floor(r() * SOBRENOMES.length)]}`, x === "G" ? "GOL" : mapa[x][k % mapa[x].length],
     Math.round(Math.max(40, Math.min(92, Number(c.forca) - 3 + (r() * 10 - 5)))), 18 + Math.floor(r() * 16)]);
   return { id: c.id, nome: c.nome, curto: c.sigla, cor: c.cor, cor2: c.cor2, jogadores };
 }
-function assistirReplay(jogoId, obj) {
+async function assistirReplay(jogoId, obj) {
   const j = obj || ON.jogos.find(x => x.id === jogoId); if (!j || !j.jogado) return;
+  await carregarElencos([j.casa, j.fora]);
   if (J && !J.fim) { if (J.tGol) clearTimeout(J.tGol); if (J.tInt) clearTimeout(J.tInt); }
   const casaB = elencoOnline(ON.clubes[j.casa]), foraB = elencoOnline(ON.clubes[j.fora]);
   const meuId = ON.eu?.clube, euCasa = meuId === j.fora ? false : true;

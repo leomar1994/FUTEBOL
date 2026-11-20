@@ -253,8 +253,9 @@ begin
     update liga_jogos set gc = v_gc, gf = v_gf, jogado = true, inicio = now(), fim = now() + interval '16 minutes' where id = j.id;
   end loop;
   if p_turno < 2 then return 'Turno 1 da rodada ' || est.rodada || ' começou.'; end if;
-  -- cota de TV da rodada para o caixa de cada clube
-  update liga_clubes c set caixa = round(coalesce(caixa, 0) + case c.div when 'A' then 1.2 when 'B' then 0.35 when 'C' then 0.1 else 0.03 end, 2);
+  -- cota de TV da rodada entra no caixa de cada clube; a folha salarial sai
+  update liga_clubes c set caixa = round(coalesce(caixa, 0) + case c.div when 'A' then 1.5 when 'B' then 0.6 when 'C' then 0.25 else 0.12 end
+    - coalesce((select sum(jg.salario) from liga_jogadores jg where jg.clube = c.id), 0), 2);
   -- diretoria de cada técnico humano
   for tec in select t.*, g.casa, g.fora, g.gc, g.gf from liga_tecnicos t
              join liga_jogos g on g.temporada = est.temporada and g.rodada = est.rodada and (g.casa = t.clube or g.fora = t.clube)
@@ -263,6 +264,7 @@ begin
     select count(*) + 1 into ranking from liga_clubes x where x.div = tec.div and x.forca > (select forca from liga_clubes where id = tec.clube);
     meta := case when ranking <= 4 then 4 when ranking <= 12 then 10 else 16 end;
     saldo := case when tec.casa = tec.clube then tec.gc - tec.gf else tec.gf - tec.gc end;
+    update liga_tecnicos set tokens = tokens + case when saldo > 0 then 2 when saldo = 0 then 1 else 0 end where user_id = tec.user_id;   -- tokens do leilão
     nconf := tec.conf + case when saldo > 0 then 4 when saldo = 0 then (case when pos <= meta then 1 else -1 end) else -5 end;
     if est.rodada >= 6 then nconf := nconf + case when pos <= meta then 1 when pos > meta + 4 then -3 else -1 end; end if;
     nconf := greatest(0, least(100, nconf));
@@ -304,6 +306,7 @@ begin
     avisos = jsonb_build_array('Fim da temporada ' || est.temporada || '. Seu clube agora está na Série ' || c.div || '.')
     from liga_clubes c where c.id = t.clube;
   update liga_estado set temporada = temporada + 1, rodada = 1, ultima_rodada = now() where id = 1;
+  perform liga_temporada_jogadores(est.temporada);
   perform liga_gerar_calendario(est.temporada + 1);
 end $$;
 
@@ -595,5 +598,169 @@ revoke all on function public.liga_criar_torneio(text, text, int, numeric, int[]
 grant execute on function public.liga_criar_torneio(text, text, int, numeric, int[], timestamptz, int, boolean), public.liga_inscrever_torneio(bigint), public.liga_sair_torneio(bigint) to authenticated;
 do $$ begin perform cron.unschedule('liga-torneios'); exception when others then null; end $$;
 select cron.schedule('liga-torneios', '* * * * *', $$select public.liga_torneios_rodar()$$);
+
+-- =====================================================================
+-- JOGADORES, CONTRATOS, SALÁRIOS, TOKENS E LEILÃO (liga online)
+-- =====================================================================
+create table if not exists public.liga_jogadores (
+  id bigserial primary key, clube text references public.liga_clubes, nome text not null, pos text not null,
+  forca int not null, idade int not null, salario numeric not null, contrato_ate int not null
+);
+create index if not exists liga_jogadores_clube on public.liga_jogadores (clube);
+alter table public.liga_tecnicos add column if not exists tokens int not null default 0;
+create table if not exists public.liga_leiloes (
+  id bigserial primary key, jogador bigint not null references public.liga_jogadores on delete cascade,
+  vendedor uuid references auth.users on delete set null, origem text, motivo text not null default 'venda' check (motivo in ('venda','contrato')),
+  status text not null default 'aberto' check (status in ('aberto','vendido','sem_lances')),
+  fim timestamptz not null, ultimo uuid references auth.users on delete set null, ultimo_clube text, lances int not null default 0,
+  destino text, criado timestamptz not null default now()
+);
+create unique index if not exists liga_leilao_um_por_jogador on public.liga_leiloes (jogador) where status = 'aberto';
+create table if not exists public.liga_lances (
+  id bigserial primary key, leilao bigint not null references public.liga_leiloes on delete cascade, user_id uuid, clube text, quando timestamptz not null default now()
+);
+
+-- valor de mercado e salário por rodada (R$ milhões), iguais aos da carreira
+create or replace function public.liga_valor(f int, i int) returns numeric language sql immutable as $$
+  select round(0.3 * power(1.13, f - 50) * case when i <= 21 then 1.4 when i <= 27 then 1.2 when i <= 30 then 1 when i <= 33 then 0.6 else 0.3 end, 2)
+$$;
+create or replace function public.liga_salario(f int, i int) returns numeric language sql immutable as $$ select round(public.liga_valor(f, i) * 0.007, 4) $$;
+
+create or replace function public.liga_nome() returns text language sql volatile as $$
+  select (array['Lucas','Gabriel','Matheus','João','Pedro','Rafael','Bruno','Felipe','Thiago','Diego','Caio','Vitor','Igor','Renan','Wesley','Alan','Douglas','Jean','Kaique','Luan','Murilo','Nathan','Otávio','Ruan','Sandro','Tiago','Yuri','Everton','Fábio','Hugo','Davi','Enzo','Henrique','Leandro','Marcos','Paulo','Rodrigo','Samuel','Vinícius','Arthur'])[1 + floor(random() * 40)::int]
+    || ' ' || (array['Silva','Santos','Oliveira','Souza','Lima','Pereira','Costa','Ferreira','Almeida','Ribeiro','Carvalho','Gomes','Martins','Rocha','Barbosa','Araújo','Dias','Moreira','Nunes','Teixeira','Cardoso','Mendes','Freitas','Pinto','Vieira','Ramos','Batista','Campos','Monteiro','Correia'])[1 + floor(random() * 30)::int]
+$$;
+create or replace function public.liga_novo_jogador(p_clube text, p_pos text, p_forca int, p_idade int, p_ate int) returns void language sql volatile as $$
+  insert into public.liga_jogadores (clube, nome, pos, forca, idade, salario, contrato_ate)
+  values (p_clube, public.liga_nome(), p_pos, greatest(38, least(94, p_forca)), p_idade, public.liga_salario(greatest(38, least(94, p_forca)), p_idade), p_ate)
+$$;
+create or replace function public.liga_recalcular_forca(p_clube text) returns void language sql volatile security definer set search_path = public as $$
+  update liga_clubes set forca = coalesce((select round(avg(forca), 1) from (select forca from liga_jogadores where clube = p_clube order by forca desc limit 11) x
+    having count(*) >= 11), forca) where id = p_clube
+$$;
+-- elenco de 24 para cada clube que ainda não tem jogadores (em volta da força atual do clube)
+create or replace function public.liga_gerar_elencos() returns void language plpgsql security definer set search_path = public as $$
+declare c record; k int; temp int; pos text[] := array['GOL','GOL','GOL','ZAG','ZAG','ZAG','ZAG','LD','LD','LE','LE','VOL','VOL','MC','MC','MC','MEI','MEI','MEI','PE','PD','CA','CA','CA'];
+begin
+  select temporada into temp from liga_estado where id = 1;
+  for c in select * from liga_clubes x where not exists (select 1 from liga_jogadores j where j.clube = x.id) loop
+    for k in 1 .. 24 loop
+      perform liga_novo_jogador(c.id, pos[k], round(c.forca - 2 + random() * 10 - 5 + case when k in (1,4,5,8,10,12,14,17,20,22,23) then 3 else -2 end)::int,
+        18 + floor(random() * 16)::int, temp + floor(random() * 3)::int);
+    end loop;
+    perform liga_recalcular_forca(c.id);
+  end loop;
+end $$;
+
+-- colocar jogador no leilão (sai do elenco na hora; se ninguém der lance, volta)
+create or replace function public.liga_leiloar(p_jogador bigint) returns void language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); eu liga_tecnicos; j liga_jogadores;
+begin
+  select * into eu from liga_tecnicos where user_id = uid;
+  select * into j from liga_jogadores where id = p_jogador for update;
+  if eu.clube is null or j.clube is distinct from eu.clube then raise exception 'Esse jogador não é do seu clube.'; end if;
+  if (select count(*) from liga_jogadores where clube = eu.clube) <= 16 then raise exception 'O elenco não pode ficar com menos de 16 jogadores.'; end if;
+  if (select count(*) from liga_leiloes where vendedor = uid and status = 'aberto') >= 3 then raise exception 'Você já tem 3 jogadores no leilão.'; end if;
+  insert into liga_leiloes (jogador, vendedor, origem, motivo, fim) values (j.id, uid, eu.clube, 'venda', now() + interval '24 hours');
+  update liga_jogadores set clube = null where id = j.id;
+  perform liga_recalcular_forca(eu.clube);
+end $$;
+
+-- lance: custa 1 token e reinicia o cronômetro (12 h). Quem der o último lance quando o tempo acabar leva o jogador.
+create or replace function public.liga_lance(p_leilao bigint) returns public.liga_leiloes language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); eu liga_tecnicos; l liga_leiloes;
+begin
+  select * into l from liga_leiloes where id = p_leilao for update;
+  select * into eu from liga_tecnicos where user_id = uid for update;
+  if l.id is null or l.status <> 'aberto' or l.fim <= now() then raise exception 'Esse leilão já terminou.'; end if;
+  if eu.clube is null then raise exception 'Você precisa estar num clube para dar lance.'; end if;
+  if l.vendedor = uid then raise exception 'Você não pode dar lance no seu próprio jogador.'; end if;
+  if l.ultimo = uid then raise exception 'O último lance já é seu.'; end if;
+  if eu.tokens < 1 then raise exception 'Você não tem tokens. Ganhe jogos da liga: vitória dá 2, empate dá 1.'; end if;
+  if (select count(*) from liga_jogadores where clube = eu.clube) >= 35 then raise exception 'Seu elenco já tem 35 jogadores.'; end if;
+  update liga_tecnicos set tokens = tokens - 1 where user_id = uid;
+  insert into liga_lances (leilao, user_id, clube) values (l.id, uid, eu.clube);
+  update liga_leiloes set lances = lances + 1, ultimo = uid, ultimo_clube = eu.clube, fim = now() + interval '12 hours' where id = l.id returning * into l;
+  return l;
+end $$;
+
+-- renovar contrato antes de vencer: paga luvas (15% do valor por ano) e o salário sobe 10%
+create or replace function public.liga_renovar(p_jogador bigint, p_anos int) returns void language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); eu liga_tecnicos; j liga_jogadores; temp int; luvas numeric;
+begin
+  select * into eu from liga_tecnicos where user_id = uid;
+  select * into j from liga_jogadores where id = p_jogador for update;
+  select temporada into temp from liga_estado where id = 1;
+  if eu.clube is null or j.clube is distinct from eu.clube then raise exception 'Esse jogador não é do seu clube.'; end if;
+  if p_anos not between 1 and 3 then raise exception 'Renove por 1, 2 ou 3 temporadas.'; end if;
+  if j.contrato_ate >= temp + 2 then raise exception 'O contrato dele ainda é longo.'; end if;
+  luvas := round(liga_valor(j.forca, j.idade) * 0.15 * p_anos, 2);
+  if (select coalesce(caixa, 0) from liga_clubes where id = eu.clube) < luvas then raise exception 'Seu clube não tem dinheiro para as luvas.'; end if;
+  update liga_clubes set caixa = caixa - luvas where id = eu.clube;
+  update liga_jogadores set contrato_ate = greatest(contrato_ate, temp) + p_anos, salario = round(salario * 1.1, 4) where id = j.id;
+end $$;
+
+-- fecha leilões vencidos (roda a cada minuto)
+create or replace function public.liga_leiloes_rodar() returns void language plpgsql security definer set search_path = public as $$
+declare l record; dest text; temp int;
+begin
+  select temporada into temp from liga_estado where id = 1;
+  for l in select * from liga_leiloes where status = 'aberto' and fim <= now() for update skip locked loop
+    dest := null;
+    if l.lances > 0 then
+      select clube into dest from liga_tecnicos where user_id = l.ultimo;
+      dest := coalesce(dest, l.ultimo_clube);
+      if (select count(*) from liga_jogadores where clube = dest) >= 35 then dest := null; end if;
+    end if;
+    if dest is not null then
+      update liga_jogadores set clube = dest, contrato_ate = temp + 2 where id = l.jogador;
+      update liga_tecnicos set tokens = tokens + l.lances / 2 where user_id = l.vendedor;     -- vendedor fica com 50% dos tokens gastos
+      update liga_leiloes set status = 'vendido', destino = dest where id = l.id;
+    else
+      dest := case when l.motivo = 'venda' and l.origem is not null and (select count(*) from liga_jogadores where clube = l.origem) < 35 then l.origem
+                   else (select c.id from liga_clubes c where not exists (select 1 from liga_tecnicos t where t.clube = c.id)
+                         and (select count(*) from liga_jogadores j where j.clube = c.id) < 30 order by random() limit 1) end;
+      update liga_jogadores set clube = dest, contrato_ate = greatest(contrato_ate, temp + 1) where id = l.jogador;
+      update liga_leiloes set status = 'sem_lances', destino = dest where id = l.id;
+    end if;
+    if dest is not null then perform liga_recalcular_forca(dest); end if;
+  end loop;
+end $$;
+
+-- fim de temporada dos jogadores: envelhecem, contratos vencidos vão ao leilão, elencos curtos recebem jovens da base
+create or replace function public.liga_temporada_jogadores(p_velha int) returns void language plpgsql security definer set search_path = public as $$
+declare j record; c record; k int;
+begin
+  update liga_jogadores set forca = greatest(38, least(94, forca + case when idade < 23 then 2 when idade < 28 then 1 when idade > 32 then -2 else 0 end)), idade = idade + 1;
+  update liga_jogadores set salario = liga_salario(forca, idade) where salario < liga_salario(forca, idade) * 0.8;
+  -- vencidos de clubes com técnico humano: leilão. Dos clubes robô, os 8 melhores vencidos também vão; o resto renova.
+  for j in select x.* from liga_jogadores x where x.contrato_ate <= p_velha and x.clube is not null
+           and (exists (select 1 from liga_tecnicos t where t.clube = x.clube)
+                or x.id in (select y.id from liga_jogadores y where y.contrato_ate <= p_velha and not exists (select 1 from liga_tecnicos t where t.clube = y.clube) order by y.forca desc limit 8)) loop
+    insert into liga_leiloes (jogador, vendedor, origem, motivo, fim) values (j.id, null, j.clube, 'contrato', now() + interval '24 hours');
+    update liga_jogadores set clube = null where id = j.id;
+  end loop;
+  update liga_jogadores set contrato_ate = p_velha + 1 + floor(random() * 3)::int where contrato_ate <= p_velha and clube is not null;
+  for c in select x.id, x.forca, (select count(*) from liga_jogadores jg where jg.clube = x.id) n from liga_clubes x loop
+    for k in c.n + 1 .. 18 loop
+      perform liga_novo_jogador(c.id, (array['GOL','ZAG','LD','LE','VOL','MC','MEI','PE','PD','CA'])[1 + floor(random() * 10)::int], round(c.forca - 10 + random() * 6)::int, 17 + floor(random() * 3)::int, p_velha + 3);
+    end loop;
+  end loop;
+  for c in select id from liga_clubes loop perform liga_recalcular_forca(c.id); end loop;
+end $$;
+
+alter table public.liga_jogadores enable row level security;
+alter table public.liga_leiloes enable row level security;
+alter table public.liga_lances enable row level security;
+drop policy if exists ler on public.liga_jogadores; create policy ler on public.liga_jogadores for select using (true);
+drop policy if exists ler on public.liga_leiloes; create policy ler on public.liga_leiloes for select using (true);
+drop policy if exists ler on public.liga_lances; create policy ler on public.liga_lances for select using (true);
+grant select on public.liga_jogadores, public.liga_leiloes, public.liga_lances to anon, authenticated;
+revoke all on function public.liga_gerar_elencos(), public.liga_leiloes_rodar(), public.liga_temporada_jogadores(int), public.liga_recalcular_forca(text), public.liga_novo_jogador(text, text, int, int, int) from public, anon, authenticated;
+revoke all on function public.liga_leiloar(bigint), public.liga_lance(bigint), public.liga_renovar(bigint, int) from public, anon;
+grant execute on function public.liga_leiloar(bigint), public.liga_lance(bigint), public.liga_renovar(bigint, int) to authenticated;
+do $$ begin perform cron.unschedule('liga-leiloes'); exception when others then null; end $$;
+select cron.schedule('liga-leiloes', '* * * * *', $$select public.liga_leiloes_rodar()$$);
+select public.liga_gerar_elencos();
 
 -- Para testar sem esperar: select public.liga_rodar_turno(1);  (e 20 min depois, ou na hora: select public.liga_rodar_turno(2);)
