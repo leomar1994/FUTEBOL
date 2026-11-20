@@ -104,6 +104,9 @@
   table.tab td, table.tab th { padding: 4px 6px; } table.tab tr.eu td { background: #1f3a29; font-weight: 700; }
   table.tab tr.sobe td:first-child { border-left: 4px solid var(--verde); } table.tab tr.cai td:first-child { border-left: 4px solid var(--verm); }
   .res-l { font-size: 13.5px; } .res-l div { padding: 3px 0; border-bottom: 1px dashed #26332b; }
+  .ft { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: center; margin: 8px 0; } .ft label { text-align: right; color: #cfe3d4; }
+  .ft label.on { color: var(--amar); font-weight: 700; }
+  .vez { background: #2b2410; border: 1px solid #6b5a1f; color: var(--amar); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-weight: 700; }
   /* editor */
   #ed-jog input, #ed-jog select { width: 100%; padding: 5px; font-size: 13px; }
   /* escalação (prancheta) */
@@ -160,17 +163,24 @@
   </section>
 
   <section id="novo" class="tela">
-    <button class="voltar" data-tela="config">↩ Configurações</button>
-    <div class="caixa"><h2>⚽ Novo jogo</h2>
-      <label class="dica">Nome do técnico</label><input type="text" id="n-tecnico" maxlength="30" placeholder="Seu nome">
-      <div class="abas" id="n-abas"></div>
-      <div class="dica" id="n-div-info"></div>
-      <div class="clubes" id="n-clubes"></div>
-      <p style="margin-top:12px"><button class="prim" id="n-comecar" disabled>▶ Começar a temporada</button> <span class="dica" id="n-escolha"></span></p>
+    <div class="caixa" style="max-width:620px;margin:0 auto">
+      <h2 style="text-align:center;font-size:22px">👔 Adicionar técnico</h2>
+      <div class="ft"><label>Treinar time do país</label><select id="n-pais"></select></div>
+      <hr style="border-color:var(--borda)">
+      <div id="n-divs"></div>
+      <label class="dica" style="display:block;text-align:right"><input type="checkbox" id="n-aleatorio"> Escolher um time aleatório</label>
+      <hr style="border-color:var(--borda)">
+      <div class="ft"><label>Nome</label><input type="text" id="n-tecnico" maxlength="30" placeholder="Nome do técnico"></div>
+      <div class="ft"><label>Nacionalidade</label><select id="n-nac"></select></div>
+      <div class="ft"><label>Time selecionado</label><span id="n-escolha" style="font-weight:700">—</span></div>
+      <div id="n-lista" class="dica"></div>
+      <p style="text-align:center;margin-top:14px"><button data-tela="config">« Voltar</button> <button id="n-mais">➕ Adicionar e incluir outro</button> <button class="prim" id="n-comecar">Iniciar jogo »</button></p>
+      <p class="dica" style="text-align:center">Vários técnicos no mesmo computador jogam cada um na sua vez.</p>
     </div>
   </section>
 
   <section id="carreira" class="tela">
+    <div class="vez" id="c-vez" hidden></div>
     <div class="caixa topo-c" id="c-topo"></div>
     <div class="colunas" style="margin-top:12px">
       <div>
@@ -704,7 +714,7 @@ function abrirEscalacao(modo) {
   ESC_MODO = modo;
   if (modo === "pre") {
     const base = TIMES.find(x => x.id === $("sel-meu").value);
-    if (!ESC_TIME || ESC_TIME.base !== base) { ESC_TIME = montarTime(base, $("sel-form").value, $("sel-estilo").value, "casa"); if (MODO_CARREIRA && C?.tatica) aplicarTatica(ESC_TIME, C.tatica); }
+    if (!ESC_TIME || ESC_TIME.base !== base) { ESC_TIME = montarTime(base, $("sel-form").value, $("sel-estilo").value, "casa"); if (MODO_CARREIRA && C && T()?.tatica) aplicarTatica(ESC_TIME, T().tatica); }
   } else { if (!J.pausado) alternarPausa(); }
   const t = timeEsc();
   $("esc-form").innerHTML = [...Object.keys(FORMACOES), ...(FORMACOES[t.formacao] ? [] : [t.formacao])].map(f => `<option>${f}</option>`).join("");
@@ -873,7 +883,7 @@ const TELAS = ["menu", "config", "novo", "carreira", "editor", "online", "inicio
 function tela(id) {
   for (const t of TELAS) $(t)?.classList.toggle("on", t === id);
   document.body.classList.toggle("verde", id !== "partida");
-  if (id === "menu") { const s = lerSalvo(); $("m-salvo-info").textContent = s ? `${s.tecnico} · ${nomeTime(s.clube)} · ${s.temporada}, rodada ${s.rodada + 1}` : "Nenhum jogo salvo ainda"; }
+  if (id === "menu") { const s = lerSalvo(); $("m-salvo-info").textContent = s ? `${s.tecnicos.map(t => t.nome).join(", ")} · ${s.temporada}, rodada ${s.rodada + 1}` : "Nenhum jogo salvo ainda"; }
   scrollTo(0, 0);
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-tela]"); if (b) tela(b.dataset.tela); });
@@ -913,37 +923,59 @@ function paises() {                                      // { Brasil: { bandeira
 const forcaTime = t => { const f = (t.jogadores || []).map(j => j[2]).sort((a, b) => b - a).slice(0, 11); return f.length ? f.reduce((a, b) => a + b, 0) / f.length : 50; };
 const estrelas = f => "★".repeat(Math.max(1, Math.min(5, Math.round((f - 45) / 8)))) ;
 
-/* ---------- configurações iniciais e escolha do clube ---------- */
-let PAIS = "Brasil", ABA_NOVO = "A", CLUBE_NOVO = null;
+/* ---------- configurações iniciais e escolha do(s) técnico(s) ---------- */
+let PAIS = "Brasil", CLUBE_NOVO = null, NOVOS = [];      // NOVOS = técnicos já adicionados nesta tela
+const NACIONALIDADES = [["Brasil","🇧🇷"],["Argentina","🇦🇷"],["Portugal","🇵🇹"],["Uruguai","🇺🇾"],["Paraguai","🇵🇾"],["Chile","🇨🇱"],["Colômbia","🇨🇴"],["Espanha","🇪🇸"],["Itália","🇮🇹"],["Alemanha","🇩🇪"],["França","🇫🇷"],["Inglaterra","🏴"],["Outro","🏳"]];
+const NUM_DIV = { A: "1ª", B: "2ª", C: "3ª", D: "4ª" };
 function abrirConfig() {
   const P = paises();
   $("cf-paises").innerHTML = Object.entries(P).map(([nome, p]) => { const n = Object.values(p.divs).reduce((a, l) => a + l.length, 0);
     return `<tr><td><input type="radio" name="cf-pais" value="${esc(nome)}" ${nome === PAIS ? "checked" : ""}></td><td>${p.bandeira} ${esc(nome)}</td><td>${Object.keys(p.divs).length}</td><td>${n}</td></tr>`; }).join("");
   tela("config");
 }
-$("cf-ok").onclick = () => { PAIS = document.querySelector("input[name=cf-pais]:checked")?.value || "Brasil"; abrirNovo(); };
+$("cf-ok").onclick = () => { PAIS = document.querySelector("input[name=cf-pais]:checked")?.value || "Brasil"; NOVOS = []; CLUBE_NOVO = null; abrirNovo(); };
 function abrirNovo() {
-  const P = paises()[PAIS];
-  $("n-abas").innerHTML = DIVS.filter(d => P.divs[d]?.length).map(d => `<button data-div="${d}" class="${d === ABA_NOVO ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
-  const lista = (P.divs[ABA_NOVO] || []).slice().sort((a, b) => forcaTime(b) - forcaTime(a));
-  const reais = lista.filter(t => t.real !== false && !t.gerado).length;
-  $("n-div-info").textContent = `${NOME_DIV[ABA_NOVO]} · ${lista.length} clubes${reais < lista.length ? ` (${lista.length - reais} com elenco gerado — monte os times reais no 🧰)` : ""}`;
-  $("n-clubes").innerHTML = lista.map(t => `<button class="clube ${t.id === CLUBE_NOVO ? "on" : ""}" data-clube="${t.id}">${escudo(t)}<span>${esc(t.nome)}</span><span class="fz">${estrelas(forcaTime(t))}</span></button>`).join("");
-  $("n-comecar").disabled = !CLUBE_NOVO; $("n-escolha").textContent = CLUBE_NOVO ? "Clube: " + nomeTime(CLUBE_NOVO) : "Escolha um clube.";
-  tela("novo");
+  const P = paises();
+  $("n-pais").innerHTML = Object.entries(P).map(([n, p]) => `<option value="${esc(n)}" ${n === PAIS ? "selected" : ""}>${p.bandeira} ${esc(n)}</option>`).join("");
+  $("n-nac").innerHTML = NACIONALIDADES.map(([n, b]) => `<option>${b} ${n}</option>`).join("");
+  desenharDivsNovo(); tela("novo");
 }
-$("n-abas").onclick = e => { const b = e.target.closest("[data-div]"); if (!b) return; ABA_NOVO = b.dataset.div; abrirNovo(); };
-$("n-clubes").onclick = e => { const b = e.target.closest("[data-clube]"); if (!b) return; CLUBE_NOVO = b.dataset.clube; abrirNovo(); };
+function desenharDivsNovo() {
+  const P = paises()[PAIS], usados = new Set(NOVOS.map(n => n.clube));
+  $("n-divs").innerHTML = DIVS.filter(d => P.divs[d]?.length).map(d => `<div class="ft"><label id="n-lb-${d}">${NUM_DIV[d]} divisão (${NOME_DIV[d]})</label><select data-div="${d}"><option value="">—</option>${P.divs[d].slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(t => `<option value="${t.id}" ${usados.has(t.id) ? "disabled" : ""}>${esc(t.nome)} ${estrelas(forcaTime(t))}</option>`).join("")}</select></div>`).join("");
+  for (const sel of $("n-divs").querySelectorAll("select")) if (CLUBE_NOVO && [...sel.options].some(o => o.value === CLUBE_NOVO)) sel.value = CLUBE_NOVO;
+  marcarEscolha();
+}
+function marcarEscolha() {
+  const t = timePorId(CLUBE_NOVO);
+  $("n-escolha").innerHTML = t ? `${escudo(t)} ${esc(t.nome)} <span class="dica">· ${esc(t.div || "")}</span>` : "—";
+  DIVS.forEach(d => $("n-lb-" + d)?.classList.toggle("on", !!t && (t.div || "").includes(NOME_DIV[d])));
+  $("n-lista").innerHTML = NOVOS.length ? "Técnicos adicionados: " + NOVOS.map((n, i) => `<b>${esc(n.nome)}</b> (${esc(nomeTime(n.clube))}) <a href="#" data-rem="${i}">✕</a>`).join(" · ") : "";
+}
+$("n-pais").onchange = () => { PAIS = $("n-pais").value; CLUBE_NOVO = null; NOVOS = NOVOS.filter(n => n.pais === PAIS); desenharDivsNovo(); };
+$("n-divs").onchange = e => { const sel = e.target.closest("select"); if (!sel) return; CLUBE_NOVO = sel.value || null; $("n-aleatorio").checked = false;
+  for (const o of $("n-divs").querySelectorAll("select")) if (o !== sel) o.value = ""; marcarEscolha(); };
+$("n-aleatorio").onchange = () => { if (!$("n-aleatorio").checked) return; const usados = new Set(NOVOS.map(n => n.clube)), l = Object.values(paises()[PAIS].divs).flat().filter(t => !usados.has(t.id)); CLUBE_NOVO = sorteia(l).id; desenharDivsNovo(); };
+$("n-lista").onclick = e => { const a = e.target.closest("[data-rem]"); if (!a) return; e.preventDefault(); NOVOS.splice(Number(a.dataset.rem), 1); desenharDivsNovo(); };
+function lerFormNovo() {
+  if (!CLUBE_NOVO) { alert("Escolha um time numa das divisões (ou marque time aleatório)."); return null; }
+  const nome = $("n-tecnico").value.trim() || `Técnico ${NOVOS.length + 1}`;
+  return { nome, nac: $("n-nac").value, clube: CLUBE_NOVO, pais: PAIS };
+}
+$("n-mais").onclick = () => { const n = lerFormNovo(); if (!n) return; NOVOS.push(n); CLUBE_NOVO = null; $("n-tecnico").value = ""; $("n-aleatorio").checked = false; desenharDivsNovo(); $("n-tecnico").focus(); };
 $("n-comecar").onclick = () => {
-  const tec = $("n-tecnico").value.trim() || "Técnico";
+  if (CLUBE_NOVO) { const n = lerFormNovo(); if (!n) return; NOVOS.push(n); CLUBE_NOVO = null; }
+  if (!NOVOS.length) return alert("Adicione pelo menos um técnico.");
   if (lerSalvo() && !confirm("Começar um jogo novo apaga o jogo salvo. Continuar?")) return;
-  novaCarreira(tec, CLUBE_NOVO, Number($("cf-temp").value) || 2026);
+  novaCarreira(NOVOS, Number($("cf-temp").value) || 2026); NOVOS = [];
 };
 
-/* ---------- temporada: as 4 divisões andam juntas, rodada a rodada ---------- */
+/* ---------- temporada: as 4 divisões andam juntas, rodada a rodada; vários técnicos jogam na sua vez ---------- */
+const T = () => C.tecnicos[C.vez];
+const divDe = id => DIVS.find(d => C.ligas[d].ids.includes(id));
 function tabela(ids) { const t = {}; for (const id of ids) t[id] = { P: 0, J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0 }; return t; }
 function calendario(ids) {                              // turno e returno (método do círculo)
-  const l = [...ids]; if (l.length % 2) l.push(null);
+  const l = [...ids].sort(() => rnd() - .5); if (l.length % 2) l.push(null);
   const n = l.length, turno = [];
   for (let r = 0; r < n - 1; r++) {
     const jogos = [];
@@ -952,21 +984,23 @@ function calendario(ids) {                              // turno e returno (mét
   }
   return [...turno, ...turno.map(r => r.map(([a, b]) => [b, a]))];
 }
-function novaCarreira(tecnico, clube, temporada) {
+function novaCarreira(novos, temporada) {
   const P = paises()[PAIS], ligas = {};
   for (const d of DIVS) { const ids = (P.divs[d] || []).map(t => t.id); ligas[d] = { ids, cal: calendario(ids), tab: tabela(ids), res: [] }; }
-  const div = DIVS.find(d => ligas[d].ids.includes(clube));
-  C = { v: 1, pais: PAIS, tecnico, clube, div, temporada, rodada: 0, ligas, conf: 60, historico: [], tatica: null, avisos: [`Bem-vindo, ${tecnico}! A diretoria do ${nomeTime(clube)} espera ${metaDiretoria(div, clube)}.`], demitido: false, propostas: [] };
+  C = { v: 2, pais: PAIS, temporada, rodada: 0, ligas, vez: 0, pend: {}, ultimos: [], tecnicos: [] };
+  C.tecnicos = novos.map(n => { const div = divDe(n.clube);
+    return { nome: n.nome, nac: n.nac, clube: n.clube, div, nivel: DIVS.indexOf(div), conf: 60, demitido: false, propostas: [], historico: [], tatica: null, titulos: [],
+      avisos: [`Bem-vindo, ${n.nome}! A diretoria do ${nomeTime(n.clube)} espera ${metaDiretoria(div, n.clube)}.`] }; });
   salvar(); abrirCarreira();
 }
-function posicao(liga, id) { return ordenar(liga).indexOf(id) + 1; }
 function ordenar(liga) { return Object.keys(liga.tab).sort((a, b) => { const x = liga.tab[a], y = liga.tab[b]; return y.P - x.P || y.V - x.V || (y.GP - y.GC) - (x.GP - x.GC) || y.GP - x.GP || nomeTime(a).localeCompare(nomeTime(b)); }); }
+function posicao(liga, id) { return ordenar(liga).indexOf(id) + 1; }
 function metaDiretoria(div, clube) {
-  const liga = (C?.ligas || {})[div], ids = liga ? liga.ids : paises()[PAIS].divs[div].map(t => t.id);
+  const ids = C?.ligas?.[div]?.ids || paises()[PAIS].divs[div].map(t => t.id);
   const rank = ids.map(id => [id, forcaTime(timePorId(id))]).sort((a, b) => b[1] - a[1]).findIndex(x => x[0] === clube) + 1;
   return rank <= 4 ? (div === "A" ? "brigar pelo título" : "o acesso") : rank <= 12 ? "uma campanha tranquila no meio da tabela" : "fugir do rebaixamento";
 }
-function placarSimulado(casa, fora) {                    // jogos dos outros: gols por Poisson a partir da força dos times
+function placarSimulado(casa, fora) {                    // gols por Poisson a partir da força dos times
   const fc = forcaTime(timePorId(casa)) + 2.5, ff = forcaTime(timePorId(fora));
   const pois = l => { let k = 0, p = Math.exp(-l), s = p, u = rnd(); while (u > s && k < 9) { k++; p *= l / k; s += p; } return k; };
   return [pois(1.3 * Math.exp((fc - ff) / 22)), pois(1.3 * Math.exp((ff - fc) / 22))];
@@ -975,74 +1009,84 @@ function registrar(liga, casa, fora, gc, gf) {
   const a = liga.tab[casa], b = liga.tab[fora]; if (!a || !b) return;
   a.J++; b.J++; a.GP += gc; a.GC += gf; b.GP += gf; b.GC += gc;
   if (gc > gf) { a.V++; a.P += 3; b.D++; } else if (gc < gf) { b.V++; b.P += 3; a.D++; } else { a.E++; b.E++; a.P++; b.P++; }
-  liga.res.push([casa, fora, gc, gf, C.rodada]);
 }
-const meuJogo = () => C.demitido ? null : (C.ligas[C.div].cal[C.rodada] || []).find(j => j.includes(C.clube));
-function jogarRodada(placarMeu) {                        // placarMeu = [gols casa, gols fora] do jogo do jogador (ou null = simular)
+const jogoDe = tec => tec.demitido ? null : (C.ligas[tec.div].cal[C.rodada] || []).find(j => j.includes(tec.clube));
+const chaveJogo = ([a, b]) => a + "|" + b;
+function proximoDaVez() {                                // passa a vez; quando todos decidiram, a rodada acontece
+  let k = C.vez + 1;
+  while (k < C.tecnicos.length) { const tec = C.tecnicos[k], j = jogoDe(tec); if (!j || !C.pend[chaveJogo(j)] || tec.demitido) break; k++; }
+  if (k >= C.tecnicos.length) { C.vez = 0; jogarRodada(); } else { C.vez = k; salvar(); abrirCarreira(); }
+}
+function decidirMeuJogo(placar) { const j = jogoDe(T()); if (j) C.pend[chaveJogo(j)] = placar || placarSimulado(j[0], j[1]); proximoDaVez(); }
+function jogarRodada() {
   const r = C.rodada; C.ultimos = [];
-  for (const d of DIVS) {
-    const liga = C.ligas[d];
-    for (const [casa, fora] of liga.cal[r] || []) {
-      const meu = !C.demitido && (casa === C.clube || fora === C.clube);
-      const [gc, gf] = meu && placarMeu ? placarMeu : placarSimulado(casa, fora);
-      registrar(liga, casa, fora, gc, gf);
-      if (d === C.div || meu) C.ultimos.push([casa, fora, gc, gf]);
-      if (meu) avaliarDiretoria(casa === C.clube ? gc - gf : gf - gc, casa === C.clube ? fora : casa, gc, gf, casa);
-    }
+  const humanos = new Set(C.tecnicos.filter(t => !t.demitido).map(t => t.clube));
+  for (const d of DIVS) for (const [casa, fora] of C.ligas[d].cal[r] || []) {
+    const [gc, gf] = C.pend[casa + "|" + fora] || placarSimulado(casa, fora);
+    registrar(C.ligas[d], casa, fora, gc, gf);
+    C.ultimos.push([casa, fora, gc, gf, d]);
+    for (const tec of C.tecnicos) if (!tec.demitido && (tec.clube === casa || tec.clube === fora)) avaliarDiretoria(tec, casa, fora, gc, gf);
   }
-  C.rodada++;
-  if (C.rodada >= C.ligas[C.div].cal.length) fimDaTemporada();
-  salvar(); abrirCarreira();
+  C.pend = {}; C.rodada++;
+  for (const tec of C.tecnicos) if (tec.demitido && !tec.propostas.length && rnd() < .6) tec.propostas = gerarPropostas(tec);
+  if (C.rodada >= C.ligas.A.cal.length) fimDaTemporada();
+  C.vez = 0; salvar(); abrirCarreira();
 }
-function avaliarDiretoria(saldo, adv, gc, gf, casa) {
-  const liga = C.ligas[C.div], pos = posicao(liga, C.clube), n = liga.ids.length, meta = metaDiretoria(C.div, C.clube);
+function avaliarDiretoria(tec, casa, fora, gc, gf) {
+  const eu = tec.clube === casa, saldo = eu ? gc - gf : gf - gc, liga = C.ligas[tec.div], pos = posicao(liga, tec.clube), meta = metaDiretoria(tec.div, tec.clube);
   const esperado = /título|acesso/.test(meta) ? 4 : /meio/.test(meta) ? 10 : 16;
-  C.conf += saldo > 0 ? 4 : saldo === 0 ? (pos <= esperado ? 1 : -1) : -5;
-  if (C.rodada >= 6) C.conf += pos <= esperado ? 1 : pos > esperado + 4 ? -3 : -1;
-  C.conf = Math.max(0, Math.min(100, C.conf));
-  const txt = `${nomeTime(casa)} ${gc} × ${gf} ${nomeTime(casa === C.clube ? adv : C.clube)}`;
-  C.historico.unshift(txt); C.historico = C.historico.slice(0, 10);
-  if (C.conf <= 15 && C.rodada >= 7) demitir(`Depois de ${txt}, a diretoria perdeu a paciência.`);
-  else if (C.conf <= 30) C.avisos = [`⚠ A diretoria está insatisfeita (confiança ${C.conf}%). Precisa de resultados.`];
-  else C.avisos = [];
+  tec.conf += saldo > 0 ? 4 : saldo === 0 ? (pos <= esperado ? 1 : -1) : -5;
+  if (C.rodada >= 6) tec.conf += pos <= esperado ? 1 : pos > esperado + 4 ? -3 : -1;
+  tec.conf = Math.max(0, Math.min(100, tec.conf));
+  const txt = `${nomeTime(casa)} ${gc} × ${gf} ${nomeTime(fora)}`;
+  tec.historico.unshift(txt); tec.historico = tec.historico.slice(0, 10);
+  if (tec.conf <= 15 && C.rodada >= 7) demitir(tec, `Depois de ${txt}, a diretoria perdeu a paciência.`);
+  else tec.avisos = tec.conf <= 30 ? [`⚠ A diretoria está insatisfeita (confiança ${tec.conf}%). Precisa de resultados.`] : [];
 }
-function demitir(motivo) {
-  C.demitido = true; C.avisos = [`🚪 Você foi demitido do ${nomeTime(C.clube)}. ${motivo}`];
-  C.ex = C.clube; C.propostas = gerarPropostas(); C.conf = 50;
+function demitir(tec, motivo) {
+  tec.avisos = [`🚪 ${tec.nome} foi demitido do ${nomeTime(tec.clube)}. ${motivo}`];
+  tec.ex = tec.clube; tec.demitido = true; tec.conf = 50; tec.propostas = gerarPropostas(tec);
 }
-function gerarPropostas() {                              // clubes em dificuldade procuram técnico (mesma divisão ou abaixo)
-  const ops = [];
-  for (const d of DIVS.slice(Math.max(0, DIVS.indexOf(C.div)), DIVS.indexOf(C.div) + 2)) {
-    const liga = C.ligas[d]; if (!liga) continue;
-    const ord = ordenar(liga).filter(id => id !== C.ex && id !== C.clube);
+// Regra do nível: o técnico só recebe propostas da divisão em que já chegou ou de divisões abaixo
+function gerarPropostas(tec) {
+  const humanos = new Set(C.tecnicos.filter(t => !t.demitido).map(t => t.clube)), ops = [];
+  for (const d of DIVS.slice(tec.nivel)) {
+    const ord = ordenar(C.ligas[d]).filter(id => id !== tec.ex && !humanos.has(id));
     ops.push(...ord.slice(-6).map(id => ({ id, div: d })));
   }
-  return ops.sort(() => rnd() - .5).slice(0, 3);
+  const peso = p => DIVS.indexOf(p.div) - tec.nivel;     // mais chance de proposta perto do nível dele
+  return ops.sort((a, b) => peso(a) - peso(b) + (rnd() - .5) * 3).slice(0, 3);
 }
 function aceitarProposta(i) {
-  const p = C.propostas[i]; if (!p) return;
-  C.clube = p.id; C.div = p.div; C.demitido = false; C.propostas = []; C.tatica = null; C.conf = 55;
-  C.avisos = [`✍ Você assinou com o ${nomeTime(p.id)}. A diretoria espera ${metaDiretoria(p.div, p.id)}.`];
+  const tec = T(), p = tec.propostas[i]; if (!p) return;
+  if (C.tecnicos.some(t => t !== tec && !t.demitido && t.clube === p.id)) return alert("Outro técnico já assumiu esse clube.");
+  Object.assign(tec, { clube: p.id, div: p.div, demitido: false, propostas: [], tatica: null, conf: 55 });
+  tec.avisos = [`✍ ${tec.nome} assinou com o ${nomeTime(p.id)}. A diretoria espera ${metaDiretoria(p.div, p.id)}.`];
   salvar(); abrirCarreira();
 }
 function fimDaTemporada() {
   const sob = {}, cai = {}, resumo = [];
-  DIVS.forEach((d, i) => { const ord = ordenar(C.ligas[d]); if (i > 0) sob[d] = ord.slice(0, 4); if (i < DIVS.length - 1) cai[d] = ord.slice(-4); resumo.push(`${NOME_DIV[d]}: campeão ${nomeTime(ord[0])}`); });
-  const posFinal = posicao(C.ligas[C.div], C.clube);
+  DIVS.forEach((d, i) => { const ord = ordenar(C.ligas[d]); if (i > 0) sob[d] = ord.slice(0, 4); if (i < DIVS.length - 1) cai[d] = ord.slice(-4); resumo.push(`${NOME_DIV[d]}: campeão ${nomeTime(ord[0])}`);
+    for (const tec of C.tecnicos) if (!tec.demitido && tec.clube === ord[0]) tec.titulos.push(`${NOME_DIV[d]} ${C.temporada}`); });
+  const finais = C.tecnicos.map(tec => tec.demitido ? null : posicao(C.ligas[tec.div], tec.clube));
   const novos = {}; DIVS.forEach(d => novos[d] = [...C.ligas[d].ids]);
   DIVS.forEach((d, i) => { if (sob[d]) { novos[d] = novos[d].filter(x => !sob[d].includes(x)); novos[DIVS[i - 1]].push(...sob[d]); } });
   DIVS.forEach((d, i) => { if (cai[d]) { novos[d] = novos[d].filter(x => !cai[d].includes(x)); novos[DIVS[i + 1]].push(...cai[d]); } });
-  let minha = C.div; DIVS.forEach(d => { if (novos[d].includes(C.clube)) minha = d; });
-  const subiu = DIVS.indexOf(minha) < DIVS.indexOf(C.div), caiu = DIVS.indexOf(minha) > DIVS.indexOf(C.div);
-  C.temporada++; C.rodada = 0; C.div = minha;
+  C.temporada++; C.rodada = 0;
+  C.tecnicos.forEach((tec, k) => {
+    if (tec.demitido) { tec.avisos = [`🏁 Fim da temporada. ${tec.nome} segue sem clube.`, resumo.join(" · ")]; tec.div = DIVS.find(d => novos[d].includes(tec.ex)) || tec.div; return; }
+    const antes = tec.div, agora = DIVS.find(d => novos[d].includes(tec.clube));
+    const subiu = DIVS.indexOf(agora) < DIVS.indexOf(antes), caiu = DIVS.indexOf(agora) > DIVS.indexOf(antes);
+    tec.div = agora; tec.nivel = Math.min(tec.nivel, DIVS.indexOf(agora));   // subiu com o clube: sobe de nível
+    tec.avisos = [`🏁 Fim da temporada ${C.temporada - 1}: ${nomeTime(tec.clube)} terminou em ${finais[k]}º.${subiu ? " 🎉 SUBIU de divisão!" : caiu ? " 😞 Caiu de divisão." : ""}`, resumo.join(" · ")];
+    if (caiu) { tec.conf = 30; tec.avisos.push("A diretoria está decepcionada com o rebaixamento."); } else if (subiu) tec.conf = Math.min(100, tec.conf + 25);
+    envelhecerElenco(tec.clube);
+  });
   for (const d of DIVS) C.ligas[d] = { ids: novos[d], cal: calendario(novos[d]), tab: tabela(novos[d]), res: [] };
-  if (!C.demitido) envelhecerElenco();
-  C.avisos = [`🏁 Fim da temporada ${C.temporada - 1}: ${nomeTime(C.clube)} terminou em ${posFinal}º.${subiu ? " 🎉 SUBIU de divisão!" : caiu ? " 😞 Caiu de divisão." : ""}`, resumo.join(" · ")];
-  if (caiu && !C.demitido) { C.conf = 30; C.avisos.push("A diretoria está decepcionada com o rebaixamento."); } else if (subiu) C.conf = Math.min(100, C.conf + 25);
 }
-function envelhecerElenco() {                            // força individual: jovens melhoram, veteranos caem um pouco
+function envelhecerElenco(id) {                          // força individual: jovens melhoram, veteranos caem um pouco
   if (document.querySelector("input[name=cf-forca]:checked")?.value === "cla") return;
-  const t = timePorId(C.clube); if (!t?.jogadores) return;
+  const t = timePorId(id); if (!t?.jogadores) return;
   t.jogadores = t.jogadores.map(([n, p, f, i]) => [n, p, Math.max(35, Math.min(95, f + (i < 23 ? 2 : i < 28 ? 1 : i > 32 ? -2 : 0))), i + 1]);
 }
 
@@ -1050,42 +1094,45 @@ function envelhecerElenco() {                            // força individual: j
 let ABA_TAB = null;
 function abrirCarreira() {
   if (!C) return tela("menu");
-  const t = timePorId(C.clube), liga = C.ligas[C.div], pos = posicao(liga, C.clube), total = liga.cal.length;
-  const corConf = C.conf > 60 ? "var(--verde)" : C.conf > 30 ? "var(--amar)" : "var(--verm)";
-  $("c-topo").innerHTML = `${escudo(t)}<div><h2>${esc(t.nome)}</h2><div class="dica">Técnico ${esc(C.tecnico)} · ${NOME_DIV[C.div]} ${C.temporada} · rodada ${Math.min(C.rodada + 1, total)} de ${total} · ${pos}º lugar</div></div>
-    <div style="margin-left:auto" class="dica">Confiança da diretoria <span class="conf"><i style="width:${C.conf}%;background:${corConf}"></i></span> ${C.conf}%</div>`;
-  const j = meuJogo();
-  if (C.demitido) {
+  const tec = T(), t = timePorId(tec.clube), liga = C.ligas[tec.div], pos = posicao(liga, tec.clube), total = liga.cal.length;
+  const corConf = tec.conf > 60 ? "var(--verde)" : tec.conf > 30 ? "var(--amar)" : "var(--verm)";
+  $("c-vez").hidden = C.tecnicos.length < 2;
+  $("c-vez").textContent = `🎮 Vez de ${tec.nome} (${tec.demitido ? "sem clube" : nomeTime(tec.clube)}) — técnico ${C.vez + 1} de ${C.tecnicos.length}`;
+  $("c-topo").innerHTML = `${escudo(t)}<div><h2>${esc(tec.demitido ? "Sem clube" : t.nome)}</h2><div class="dica">Técnico ${esc(tec.nome)} ${esc((tec.nac || "").split(" ")[0])} · nível ${NUM_DIV[DIVS[tec.nivel]]} divisão · ${NOME_DIV[tec.div]} ${C.temporada} · rodada ${Math.min(C.rodada + 1, total)} de ${total}${tec.demitido ? "" : ` · ${pos}º lugar`}${tec.titulos.length ? " · 🏆 " + tec.titulos.length : ""}</div></div>
+    <div style="margin-left:auto" class="dica">Confiança da diretoria <span class="conf"><i style="width:${tec.conf}%;background:${corConf}"></i></span> ${tec.conf}%</div>`;
+  const j = jogoDe(tec), decidido = j && C.pend[chaveJogo(j)];
+  $("c-jogar").hidden = !j || !!decidido; $("c-simular").hidden = false;
+  if (tec.demitido) {
     $("c-prox-tit").textContent = "Sem clube";
-    $("c-prox").innerHTML = `<p>${esc(C.avisos[0] || "")}</p><h3>Propostas</h3>` + (C.propostas.length ? C.propostas.map((p, i) => `<p>${escudo(timePorId(p.id))} <b>${esc(nomeTime(p.id))}</b> · ${NOME_DIV[p.div]} · ${posicao(C.ligas[p.div], p.id)}º <button data-prop="${i}">✍ Aceitar</button></p>`).join("") : "<p class='dica'>Nenhuma proposta. Espere a próxima rodada.</p>");
-    $("c-jogar").hidden = true; $("c-simular").textContent = "⏭ Esperar a próxima rodada"; $("c-simular").hidden = false;
+    $("c-prox").innerHTML = `<p>${esc(tec.avisos[0] || "")}</p><h3>Propostas</h3>` + (tec.propostas.length ? tec.propostas.map((p, i) => `<p>${escudo(timePorId(p.id))} <b>${esc(nomeTime(p.id))}</b> · ${NOME_DIV[p.div]} · ${posicao(C.ligas[p.div], p.id)}º <button data-prop="${i}">✍ Aceitar</button></p>`).join("") : "<p class='dica'>Nenhuma proposta ainda. Espere a próxima rodada.</p>") +
+      `<p class="dica">Pelo seu nível (${NUM_DIV[DIVS[tec.nivel]]} divisão), você recebe propostas dessa divisão ou de divisões abaixo.</p>`;
+    $("c-simular").textContent = "⏭ Esperar a próxima rodada";
   } else if (j) {
     const [casa, fora] = j; $("c-prox-tit").textContent = `Próximo jogo — rodada ${C.rodada + 1}`;
-    $("c-prox").innerHTML = `<div class="prox"><span>${escudo(timePorId(casa))}<br>${esc(nomeTime(casa))}</span><span>×</span><span>${escudo(timePorId(fora))}<br>${esc(nomeTime(fora))}</span></div><p class="dica" style="text-align:center">${casa === C.clube ? "Em casa" : "Fora de casa"} · adversário em ${posicao(liga, casa === C.clube ? fora : casa)}º</p>`;
-    $("c-jogar").hidden = false; $("c-simular").hidden = false; $("c-simular").textContent = "⏭ Simular o jogo";
-  } else { $("c-prox-tit").textContent = "Rodada de folga"; $("c-prox").innerHTML = ""; $("c-jogar").hidden = true; $("c-simular").textContent = "⏭ Próxima rodada"; }
-  $("c-res").innerHTML = (C.ultimos || []).map(([a, b, x, y]) => `<div>${(a === C.clube || b === C.clube) ? "<b>" : ""}${esc(nomeTime(a))} ${x} × ${y} ${esc(nomeTime(b))}${(a === C.clube || b === C.clube) ? "</b>" : ""}</div>`).join("") || "<p class='dica'>A temporada ainda não começou.</p>";
-  $("c-dir").innerHTML = `<p>Meta: <b>${metaDiretoria(C.div, C.clube)}</b>.</p>` + C.avisos.map(a => `<p>${esc(a)}</p>`).join("") + (C.historico.length ? `<p class="dica">Últimos jogos: ${C.historico.slice(0, 5).map(esc).join(" · ")}</p>` : "");
-  ABA_TAB ||= C.div;
+    $("c-prox").innerHTML = `<div class="prox"><span>${escudo(timePorId(casa))}<br>${esc(nomeTime(casa))}</span><span>${decidido ? `${decidido[0]} × ${decidido[1]}` : "×"}</span><span>${escudo(timePorId(fora))}<br>${esc(nomeTime(fora))}</span></div><p class="dica" style="text-align:center">${decidido ? "Jogo já disputado pelo outro técnico." : `${casa === tec.clube ? "Em casa" : "Fora de casa"} · adversário em ${posicao(liga, casa === tec.clube ? fora : casa)}º`}</p>`;
+    $("c-simular").textContent = decidido ? "➡ Continuar" : "⏭ Simular o jogo";
+  } else { $("c-prox-tit").textContent = "Rodada de folga"; $("c-prox").innerHTML = ""; $("c-simular").textContent = "⏭ Próxima rodada"; }
+  $("c-res").innerHTML = (C.ultimos || []).filter(r => r[4] === tec.div).map(([a, b, x, y]) => { const meu = a === tec.clube || b === tec.clube; return `<div>${meu ? "<b>" : ""}${esc(nomeTime(a))} ${x} × ${y} ${esc(nomeTime(b))}${meu ? "</b>" : ""}</div>`; }).join("") || "<p class='dica'>A temporada ainda não começou.</p>";
+  $("c-dir").innerHTML = (tec.demitido ? "" : `<p>Meta: <b>${metaDiretoria(tec.div, tec.clube)}</b>.</p>`) + tec.avisos.map(a => `<p>${esc(a)}</p>`).join("") + (tec.historico.length ? `<p class="dica">Últimos jogos: ${tec.historico.slice(0, 5).map(esc).join(" · ")}</p>` : "");
+  if (!ABA_TAB || C._abaDe !== C.vez) { ABA_TAB = tec.div; C._abaDe = C.vez; }
   $("c-abas").innerHTML = DIVS.map(d => `<button data-tab="${d}" class="${d === ABA_TAB ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
-  const lt = C.ligas[ABA_TAB], ord = ordenar(lt), n = ord.length, iD = DIVS.indexOf(ABA_TAB);
+  const lt = C.ligas[ABA_TAB], ord = ordenar(lt), n = ord.length, iD = DIVS.indexOf(ABA_TAB), humanos = new Map(C.tecnicos.filter(x => !x.demitido).map(x => [x.clube, x.nome]));
   $("c-tab").innerHTML = ord.map((id, i) => { const x = lt.tab[id];
-    return `<tr class="${id === C.clube ? "eu" : ""} ${iD > 0 && i < 4 ? "sobe" : ""} ${iD < 3 && i >= n - 4 ? "cai" : ""}"><td>${i + 1}</td><td>${escudo(timePorId(id))}${esc(nomeTime(id))}</td><td><b>${x.P}</b></td><td>${x.J}</td><td>${x.V}</td><td>${x.E}</td><td>${x.D}</td><td>${x.GP - x.GC}</td></tr>`; }).join("");
+    return `<tr class="${id === tec.clube ? "eu" : ""} ${iD > 0 && i < 4 ? "sobe" : ""} ${iD < 3 && i >= n - 4 ? "cai" : ""}"><td>${i + 1}</td><td>${escudo(timePorId(id))}${esc(nomeTime(id))}${humanos.has(id) && id !== tec.clube ? ` <span class="dica">(${esc(humanos.get(id))})</span>` : ""}</td><td><b>${x.P}</b></td><td>${x.J}</td><td>${x.V}</td><td>${x.E}</td><td>${x.D}</td><td>${x.GP - x.GC}</td></tr>`; }).join("");
   tela("carreira");
 }
 $("c-abas").onclick = e => { const b = e.target.closest("[data-tab]"); if (b) { ABA_TAB = b.dataset.tab; abrirCarreira(); } };
 $("c-prox").onclick = e => { const b = e.target.closest("[data-prop]"); if (b) aceitarProposta(Number(b.dataset.prop)); };
-$("c-simular").onclick = () => { if (C.demitido && !C.propostas.length) C.propostas = gerarPropostas(); jogarRodada(null); };
+$("c-simular").onclick = () => { const j = jogoDe(T()); if (j && !C.pend[chaveJogo(j)]) decidirMeuJogo(null); else proximoDaVez(); };
 $("c-jogar").onclick = () => {
-  const j = meuJogo(); if (!j) return;
-  const [casa, fora] = j, eu = casa === C.clube;
-  $("sel-meu").value = C.clube; $("sel-adv").value = eu ? fora : casa; $("sel-mando").value = eu ? "casa" : "fora";
-  if ($("sel-meu").value !== C.clube || $("sel-adv").value !== (eu ? fora : casa)) popular();
-  $("sel-meu").value = C.clube; $("sel-adv").value = eu ? fora : casa; $("sel-mando").value = eu ? "casa" : "fora";
+  const tec = T(), j = jogoDe(tec); if (!j) return;
+  const [casa, fora] = j, eu = casa === tec.clube;
+  popular();
+  $("sel-meu").value = tec.clube; $("sel-adv").value = eu ? fora : casa; $("sel-mando").value = eu ? "casa" : "fora";
   ESC_TIME = null; MODO_CARREIRA = { rodada: C.rodada }; abrirEscalacao("pre");
 };
-function fimDoJogoCarreira(fim) { jogarRodada([fim.casa.gols, fim.fora.gols]); }
-function guardarTatica(t) { C.tatica = { formacao: t.formacao, estilo: t.estilo, jog: t.jog.map(p => ({ id: p.id, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
+function fimDoJogoCarreira(fim) { decidirMeuJogo([fim.casa.gols, fim.fora.gols]); }
+function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, jog: t.jog.map(p => ({ id: p.id, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
 function aplicarTatica(t, tat) {                         // repete a escalação da última partida (quem ainda estiver no elenco)
   const todos = [...t.jog, ...t.banco], novo = [];
   for (const s of tat.jog) { const p = todos.find(x => x.id === s.id); if (p && !novo.includes(p)) { Object.assign(p, { papel: s.papel, bx: s.bx, by: s.by }); novo.push(p); } }
@@ -1095,19 +1142,22 @@ function aplicarTatica(t, tat) {                         // repete a escalação
 $("c-salvar").onclick = () => { salvar(); $("c-salvar").textContent = "✅ Salvo"; setTimeout(() => $("c-salvar").textContent = "💾 Salvar", 1500); };
 
 /* ---------- salvar / carregar ---------- */
-const CHAVE_SALVO = "tecnico_carreira_v1";
-function salvar() { try { localStorage.setItem(CHAVE_SALVO, JSON.stringify({ ...C, elencoClube: timePorId(C.clube)?.jogadores })); } catch (e) { alert("Não consegui salvar (memória do navegador cheia?)."); } }
+const CHAVE_SALVO = "tecnico_carreira_v2";
+function salvar() {
+  const elencos = {}; for (const tec of C.tecnicos) { const t = timePorId(tec.clube); if (t) elencos[tec.clube] = t.jogadores; }
+  try { localStorage.setItem(CHAVE_SALVO, JSON.stringify({ ...C, elencos })); } catch (e) { alert("Não consegui salvar (memória do navegador cheia?)."); }
+}
 function lerSalvo() { try { return JSON.parse(localStorage.getItem(CHAVE_SALVO) || "null"); } catch (e) { return null; } }
 $("m-salvo").onclick = () => {
   const s = lerSalvo(); if (!s) return alert("Ainda não há jogo salvo. Comece um Novo jogo.");
   PAIS = s.pais || "Brasil"; paises();
-  if (!timePorId(s.clube)) return alert("O clube deste jogo salvo não está no pacote de times atual.");
-  if (s.elencoClube) timePorId(s.clube).jogadores = s.elencoClube;
-  delete s.elencoClube; C = s; ABA_TAB = null; abrirCarreira();
+  if (s.tecnicos.some(t => !timePorId(t.clube))) return alert("Um clube deste jogo salvo não está no pacote de times atual.");
+  for (const [id, j] of Object.entries(s.elencos || {})) if (timePorId(id) && j) timePorId(id).jogadores = j;
+  delete s.elencos; C = s; ABA_TAB = null; abrirCarreira();
 };
 
 /* ---------- menu ---------- */
-$("m-novo").onclick = () => { CLUBE_NOVO = null; abrirConfig(); };
+$("m-novo").onclick = () => { CLUBE_NOVO = null; NOVOS = []; abrirConfig(); };
 $("m-online").onclick = () => tela("online");
 $("m-editor").onclick = () => abrirEditor();
 $("m-amistoso").onclick = e => { e.preventDefault(); popular(); tela("inicio"); };
