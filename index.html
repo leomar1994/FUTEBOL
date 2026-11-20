@@ -209,10 +209,39 @@
 
   <section id="online" class="tela">
     <button class="voltar" data-tela="menu">↩ Menu</button>
-    <div class="caixa"><h2>🌐 Liga online — em construção</h2>
-      <p>Como vai funcionar: todos os técnicos começam na <b>Série D</b>, cada um num clube controlado por um robô até então. As rodadas acontecem num horário fixo para todos; quem não estiver online tem o time escalado automaticamente.</p>
-      <p>Os técnicos sobem de divisão com o clube, podem ser <b>demitidos</b> pela diretoria e receber <b>propostas</b> de outros clubes. Quem entra depois assume um clube da Série D que ainda é do robô, sem mexer nos jogos de quem já está jogando.</p>
-      <p class="dica">Precisa de um servidor para guardar a liga; veja os detalhes com o Claude.</p></div>
+    <div id="on-login" class="caixa" style="max-width:460px;margin:0 auto" hidden>
+      <h2>🌐 Liga online</h2>
+      <p class="dica">Todos os técnicos jogam a mesma liga. Você começa num clube sorteado e as rodadas acontecem todo dia às 21h (horário de Brasília).</p>
+      <div class="ft"><label>E-mail</label><input type="text" id="on-email" autocomplete="email" inputmode="email"></div>
+      <div class="ft"><label>Senha</label><input type="password" id="on-senha" autocomplete="current-password" style="font:inherit;background:var(--painel2);color:var(--texto);border:1px solid var(--borda);border-radius:8px;padding:9px;width:100%"></div>
+      <p style="text-align:center"><button class="prim" id="on-entrar">Entrar</button> <button id="on-criar">Criar conta</button></p>
+      <p class="dica" id="on-msg-login"></p>
+    </div>
+    <div id="on-novo" class="caixa" style="max-width:520px;margin:0 auto" hidden>
+      <h2>👔 Novo técnico na liga</h2>
+      <div class="ft"><label>Nome</label><input type="text" id="on-nome" maxlength="30"></div>
+      <div class="ft"><label>Nacionalidade</label><select id="on-nac"></select></div>
+      <p class="dica">Você vai assumir um clube sorteado, de uma divisão sorteada, no lugar de um técnico robô. Daí em diante: suba de divisão, cuidado com a diretoria e aceite propostas — sempre da sua divisão ou de baixo.</p>
+      <p style="text-align:center"><button class="prim" id="on-assumir">🎲 Sortear meu clube</button></p><p class="dica" id="on-msg-novo"></p>
+    </div>
+    <div id="on-hub" hidden>
+      <div class="caixa topo-c" id="on-topo"></div>
+      <div class="colunas" style="margin-top:12px">
+        <div>
+          <div class="caixa"><h2 id="on-prox-tit">Próximo jogo</h2><div id="on-prox"></div><p class="dica" id="on-relogio"></p></div>
+          <div class="caixa" style="margin-top:12px"><h2>Tática para a próxima rodada</h2>
+            <div class="ft"><label>Formação</label><select id="on-form"></select></div>
+            <div class="ft"><label>Estilo</label><select id="on-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo (marca mais, sofre mais)</option><option value="de">Retranca (sofre menos, marca menos)</option></select></div>
+            <p><button class="prim" id="on-tatica">💾 Salvar tática</button> <span class="dica" id="on-msg-tat"></span></p></div>
+          <div class="caixa" style="margin-top:12px"><h2>Última rodada</h2><div class="res-l" id="on-res"></div></div>
+          <div class="caixa" style="margin-top:12px"><h2>Técnicos da liga</h2><div class="res-l" id="on-tecs"></div></div>
+        </div>
+        <div class="caixa"><div class="abas" id="on-abas"></div><table class="tab"><thead><tr><th>#</th><th>Clube</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr></thead><tbody id="on-tab"></tbody></table>
+          <p class="dica"><span style="color:var(--verde)">▌</span> sobem · <span style="color:var(--verm)">▌</span> caem · 👔 = técnico humano</p></div>
+      </div>
+      <p><button id="on-atualizar">🔄 Atualizar</button> <button id="on-sair">Sair da conta</button></p>
+    </div>
+    <p class="dica" id="on-status" style="text-align:center"></p>
   </section>
 
   <section id="inicio" class="tela">
@@ -1158,7 +1187,7 @@ $("m-salvo").onclick = () => {
 
 /* ---------- menu ---------- */
 $("m-novo").onclick = () => { CLUBE_NOVO = null; NOVOS = []; abrirConfig(); };
-$("m-online").onclick = () => tela("online");
+$("m-online").onclick = () => abrirOnline();
 $("m-editor").onclick = () => abrirEditor();
 $("m-amistoso").onclick = e => { e.preventDefault(); popular(); tela("inicio"); };
 $("m-sair").onclick = e => { e.preventDefault(); if (confirm("Sair do jogo?")) { window.close(); setTimeout(() => { document.body.innerHTML = "<p style='padding:40px;text-align:center;color:#eafbe9'>Até a próxima! Pode fechar esta aba.</p>"; }, 200); } };
@@ -1194,6 +1223,98 @@ $("ed-salvar").onclick = () => {
   Object.assign(timePorId(ED), mud); $("ed-msg").textContent = "✅ Time salvo."; popular();
 };
 $("ed-desfazer").onclick = () => { const ed = lerEd(); if (!ed[ED]) return; delete ed[ED]; localStorage.setItem(CHAVE_ED, JSON.stringify(ed)); $("ed-msg").textContent = "Edição desfeita: recarregue a página para ver o time original."; };
+
+/* =====================================================================
+   LIGA ONLINE (Supabase). As rodadas e os resultados são calculados no servidor.
+   A chave abaixo é a pública (publishable): só lê o que as regras de segurança permitem.
+   ===================================================================== */
+const SB_URL = "https://dgwionegmpyruvkkcune.supabase.co", SB_KEY = "sb_publishable_YbFCgBI0NLazqXvF9eqYPg_ZGOdSV0q";
+let SB = null;
+const ON = { clubes: {}, estado: null, tecnicos: [], classif: [], jogos: [], eu: null, user: null, tatica: null, aba: null };
+function carregarScript(src) { return new Promise((ok, no) => { const s = Object.assign(document.createElement("script"), { src, onload: ok, onerror: () => no(new Error("Não consegui carregar o Supabase (sem internet?).")) }); document.head.appendChild(s); }); }
+const ONAPI = {
+  async iniciar() { if (SB) return; if (!window.supabase) await carregarScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"); SB = window.supabase.createClient(SB_URL, SB_KEY); },
+  async usuario() { const { data } = await SB.auth.getUser(); return data?.user || null; },
+  async entrar(email, senha) { const { data, error } = await SB.auth.signInWithPassword({ email, password: senha }); if (error) throw error; return data.user; },
+  async criar(email, senha) { const { data, error } = await SB.auth.signUp({ email, password: senha, options: { emailRedirectTo: location.href.split("#")[0] } }); if (error) throw error; return data; },
+  async sair() { await SB.auth.signOut(); },
+  async tudo() {
+    const ok = r => { if (r.error) throw r.error; return r.data; };
+    const [clubes, estado, tecnicos, classif] = await Promise.all([SB.from("liga_clubes").select("*"), SB.from("liga_estado").select("*").eq("id", 1).single(), SB.from("liga_tecnicos").select("user_id,nome,nac,clube,ex_clube,div,nivel,conf,demitido,propostas,titulos,avisos"), SB.from("liga_classificacao").select("*")]);
+    const est = ok(estado);
+    const jogos = ok(await SB.from("liga_jogos").select("*").eq("temporada", est.temporada).in("rodada", [est.rodada, est.rodada - 1]));
+    return { clubes: ok(clubes), estado: est, tecnicos: ok(tecnicos), classif: ok(classif), jogos };
+  },
+  async minhaTatica(uid) { const r = await SB.from("liga_taticas").select("*").eq("user_id", uid).maybeSingle(); return r.data; },
+  async salvarTatica(uid, formacao, estilo) { const r = await SB.from("liga_taticas").upsert({ user_id: uid, formacao, estilo, atualizado: new Date().toISOString() }); if (r.error) throw r.error; },
+  async assumir(nome, nac) { const r = await SB.rpc("liga_entrar", { p_nome: nome, p_nac: nac }); if (r.error) throw r.error; return r.data; },
+  async aceitar(clube) { const r = await SB.rpc("liga_aceitar", { p_clube: clube }); if (r.error) throw r.error; return r.data; }
+};
+const clubeOn = id => { const c = ON.clubes[id]; return c ? { id: c.id, nome: c.nome, curto: c.sigla, cor: c.cor, cor2: c.cor2 } : { id, nome: id || "—", curto: "?", cor: "#444", cor2: "#fff" }; };
+const nomeOn = id => clubeOn(id).nome;
+function onStatus(t) { $("on-status").textContent = t || ""; }
+function onMostrar(qual) { for (const k of ["login", "novo", "hub"]) $("on-" + k).hidden = k !== qual; }
+async function abrirOnline() {
+  tela("online"); onMostrar(null); onStatus("Conectando à liga…");
+  try {
+    await ONAPI.iniciar();
+    ON.user = await ONAPI.usuario();
+    if (!ON.user) { onStatus(""); return onMostrar("login"); }
+    await recarregarOnline();
+  } catch (e) { onStatus("⚠ " + (e.message || e)); }
+}
+async function recarregarOnline() {
+  onStatus("Carregando…");
+  const d = await ONAPI.tudo();
+  ON.clubes = Object.fromEntries(d.clubes.map(c => [c.id, c])); ON.estado = d.estado; ON.tecnicos = d.tecnicos; ON.classif = d.classif; ON.jogos = d.jogos;
+  ON.eu = ON.tecnicos.find(t => t.user_id === ON.user.id) || null;
+  onStatus("");
+  if (!ON.eu) { $("on-nac").innerHTML = NACIONALIDADES.map(([n, b]) => `<option>${b} ${n}</option>`).join(""); return onMostrar("novo"); }
+  ON.tatica = await ONAPI.minhaTatica(ON.user.id);
+  desenharOnline(); onMostrar("hub");
+}
+function ordemOn(div) { return ON.classif.filter(c => c.div === div).sort((a, b) => b.p - a.p || b.v - a.v || (b.gp - b.gcontra) - (a.gp - a.gcontra) || b.gp - a.gp || a.clube.localeCompare(b.clube)); }
+function proximaRodadaEm() { const a = new Date(), p = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate() + 1)); return p; }
+function desenharOnline() {
+  const eu = ON.eu, est = ON.estado, c = clubeOn(eu.clube || eu.ex_clube), div = eu.demitido ? eu.div : (ON.clubes[eu.clube]?.div || eu.div);
+  const pos = eu.demitido ? null : ordemOn(div).findIndex(x => x.clube === eu.clube) + 1;
+  const corConf = eu.conf > 60 ? "var(--verde)" : eu.conf > 30 ? "var(--amar)" : "var(--verm)";
+  $("on-topo").innerHTML = `${eu.demitido ? "" : escudo(c)}<div><h2>${esc(eu.demitido ? "Sem clube" : c.nome)}</h2><div class="dica">Técnico ${esc(eu.nome)} ${esc((eu.nac || "").split(" ")[0])} · nível ${NUM_DIV[DIVS[eu.nivel]]} divisão · Série ${div} ${est.temporada} · rodada ${est.rodada}${pos ? ` · ${pos}º lugar` : ""}${(eu.titulos || []).length ? " · 🏆 " + eu.titulos.length : ""}</div></div>
+    <div style="margin-left:auto" class="dica">Confiança da diretoria <span class="conf"><i style="width:${eu.conf}%;background:${corConf}"></i></span> ${eu.conf}%</div>`;
+  const prox = eu.demitido ? null : ON.jogos.find(j => j.rodada === est.rodada && !j.jogado && (j.casa === eu.clube || j.fora === eu.clube));
+  if (eu.demitido) {
+    $("on-prox-tit").textContent = "Sem clube";
+    $("on-prox").innerHTML = (eu.avisos || []).map(a => `<p>${esc(a)}</p>`).join("") + "<h3>Propostas</h3>" + ((eu.propostas || []).length ? eu.propostas.map(p => `<p>${escudo(clubeOn(p.clube))} <b>${esc(nomeOn(p.clube))}</b> · Série ${p.div} <button data-on-prop="${esc(p.clube)}">✍ Aceitar</button></p>`).join("") : "<p class='dica'>Nenhuma proposta ainda. Elas chegam depois das rodadas.</p>") +
+      `<p class="dica">Pelo seu nível, só chegam propostas da ${NUM_DIV[DIVS[eu.nivel]]} divisão ou de baixo.</p>`;
+  } else if (prox) {
+    $("on-prox-tit").textContent = `Próximo jogo — rodada ${est.rodada}`;
+    $("on-prox").innerHTML = `<div class="prox"><span>${escudo(clubeOn(prox.casa))}<br>${esc(nomeOn(prox.casa))}</span><span>×</span><span>${escudo(clubeOn(prox.fora))}<br>${esc(nomeOn(prox.fora))}</span></div>` + (eu.avisos || []).map(a => `<p>${esc(a)}</p>`).join("");
+  } else { $("on-prox-tit").textContent = "Próximo jogo"; $("on-prox").innerHTML = "<p class='dica'>Sem jogo nesta rodada.</p>"; }
+  const ms = proximaRodadaEm() - new Date(), h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
+  $("on-relogio").textContent = `⏱ A próxima rodada é jogada às 21h (Brasília) — faltam ${h}h${String(m).padStart(2, "0")}. Até lá, ajuste a tática.`;
+  $("on-form").innerHTML = Object.keys(FORMACOES).map(f => `<option>${f}</option>`).join("");
+  $("on-form").value = ON.tatica?.formacao || "4-3-3"; $("on-estilo").value = ON.tatica?.estilo || "eq";
+  const ult = ON.jogos.filter(j => j.rodada === est.rodada - 1 && j.jogado && j.div === div);
+  $("on-res").innerHTML = ult.map(j => { const meu = j.casa === eu.clube || j.fora === eu.clube; return `<div>${meu ? "<b>" : ""}${esc(nomeOn(j.casa))} ${j.gc} × ${j.gf} ${esc(nomeOn(j.fora))}${meu ? "</b>" : ""}</div>`; }).join("") || "<p class='dica'>Ainda não houve rodada nesta temporada.</p>";
+  const humanos = new Map(ON.tecnicos.filter(t => t.clube).map(t => [t.clube, t.nome]));
+  $("on-tecs").innerHTML = ON.tecnicos.slice().sort((a, b) => a.nivel - b.nivel || (b.titulos?.length || 0) - (a.titulos?.length || 0)).map(t => `<div>👔 <b>${esc(t.nome)}</b> ${esc((t.nac || "").split(" ")[0])} · ${t.demitido ? "sem clube" : esc(nomeOn(t.clube))} · nível ${NUM_DIV[DIVS[t.nivel]]}${t.titulos?.length ? " · 🏆 " + t.titulos.length : ""}</div>`).join("");
+  ON.aba ||= div;
+  $("on-abas").innerHTML = DIVS.map(d => `<button data-on-tab="${d}" class="${d === ON.aba ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
+  const ord = ordemOn(ON.aba), iD = DIVS.indexOf(ON.aba), n = ord.length;
+  $("on-tab").innerHTML = ord.map((x, i) => `<tr class="${x.clube === eu.clube ? "eu" : ""} ${iD > 0 && i < 4 ? "sobe" : ""} ${iD < 3 && i >= n - 4 ? "cai" : ""}"><td>${i + 1}</td><td>${escudo(clubeOn(x.clube))}${esc(nomeOn(x.clube))}${humanos.has(x.clube) ? ` <span class="dica">👔 ${esc(humanos.get(x.clube))}</span>` : ""}</td><td><b>${x.p}</b></td><td>${x.j}</td><td>${x.v}</td><td>${x.e}</td><td>${x.d}</td><td>${x.gp - x.gcontra}</td></tr>`).join("");
+}
+const erroAmigavel = e => /invalid login/i.test(e.message) ? "E-mail ou senha incorretos." : /email not confirmed/i.test(e.message) ? "Confirme o e-mail: abra a mensagem que o Supabase enviou e clique no link." : /already registered/i.test(e.message) ? "Esse e-mail já tem conta: use Entrar." : /password/i.test(e.message) ? "A senha precisa ter pelo menos 6 caracteres." : e.message;
+$("on-entrar").onclick = async () => { $("on-msg-login").textContent = "Entrando…"; try { ON.user = await ONAPI.entrar($("on-email").value.trim(), $("on-senha").value); $("on-senha").value = ""; $("on-msg-login").textContent = ""; await recarregarOnline(); } catch (e) { $("on-msg-login").textContent = "⚠ " + erroAmigavel(e); } };
+$("on-criar").onclick = async () => { $("on-msg-login").textContent = "Criando a conta…"; try { const r = await ONAPI.criar($("on-email").value.trim(), $("on-senha").value); $("on-senha").value = "";
+  if (r.session) { ON.user = r.user; $("on-msg-login").textContent = ""; await recarregarOnline(); } else $("on-msg-login").textContent = "✅ Conta criada! Abra o e-mail de confirmação e depois toque em Entrar."; } catch (e) { $("on-msg-login").textContent = "⚠ " + erroAmigavel(e); } };
+$("on-assumir").onclick = async () => { const nome = $("on-nome").value.trim(); if (!nome) return ($("on-msg-novo").textContent = "Escreva o seu nome de técnico.");
+  $("on-msg-novo").textContent = "Sorteando…"; try { await ONAPI.assumir(nome, $("on-nac").value); await recarregarOnline(); } catch (e) { $("on-msg-novo").textContent = "⚠ " + e.message; } };
+$("on-tatica").onclick = async () => { try { await ONAPI.salvarTatica(ON.user.id, $("on-form").value, $("on-estilo").value); ON.tatica = { formacao: $("on-form").value, estilo: $("on-estilo").value }; $("on-msg-tat").textContent = "✅ Salva para a próxima rodada."; } catch (e) { $("on-msg-tat").textContent = "⚠ " + e.message; } };
+$("on-prox").onclick = async e => { const b = e.target.closest("[data-on-prop]"); if (!b) return; try { await ONAPI.aceitar(b.dataset.onProp); await recarregarOnline(); } catch (er) { alert(er.message); } };
+$("on-abas").onclick = e => { const b = e.target.closest("[data-on-tab]"); if (b) { ON.aba = b.dataset.onTab; desenharOnline(); } };
+$("on-atualizar").onclick = () => recarregarOnline().catch(e => onStatus("⚠ " + e.message));
+$("on-sair").onclick = async () => { await ONAPI.sair(); ON.user = null; onMostrar("login"); };
+
 tela("menu");
 
 </script>
