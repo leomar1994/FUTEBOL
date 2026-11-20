@@ -253,6 +253,8 @@ begin
     update liga_jogos set gc = v_gc, gf = v_gf, jogado = true, inicio = now(), fim = now() + interval '16 minutes' where id = j.id;
   end loop;
   if p_turno < 2 then return 'Turno 1 da rodada ' || est.rodada || ' começou.'; end if;
+  -- cota de TV da rodada para o caixa de cada clube
+  update liga_clubes c set caixa = round(coalesce(caixa, 0) + case c.div when 'A' then 1.2 when 'B' then 0.35 when 'C' then 0.1 else 0.03 end, 2);
   -- diretoria de cada técnico humano
   for tec in select t.*, g.casa, g.fora, g.gc, g.gf from liga_tecnicos t
              join liga_jogos g on g.temporada = est.temporada and g.rodada = est.rodada and (g.casa = t.clube or g.fora = t.clube)
@@ -404,5 +406,187 @@ revoke all on function public.liga_desafiar(uuid, timestamptz), public.liga_resp
 grant execute on function public.liga_desafiar(uuid, timestamptz), public.liga_responder_amistoso(bigint, boolean) to authenticated;
 do $$ begin perform cron.unschedule('liga-amistosos'); exception when others then null; end $$;
 select cron.schedule('liga-amistosos', '* * * * *', $$select public.liga_amistosos_rodar()$$);
+
+-- ---------- dinheiro do clube na liga online (R$ milhões) ----------
+alter table public.liga_clubes add column if not exists caixa numeric;
+update public.liga_clubes set caixa = case div when 'A' then 40 when 'B' then 12 when 'C' then 4 else 1.5 end where caixa is null;
+
+-- ---------- torneios criados pelos técnicos (inscrição em dinheiro do jogo; pote dividido entre os primeiros) ----------
+create table if not exists public.liga_torneios (
+  id bigserial primary key, nome text not null check (length(nome) between 3 and 40), criador uuid not null references auth.users on delete cascade,
+  formato text not null check (formato in ('mata','pontos')), vagas int not null, taxa numeric not null default 0 check (taxa >= 0),
+  premio int[] not null, inicio timestamptz not null, intervalo int not null, robos boolean not null default true,
+  status text not null default 'inscricoes' check (status in ('inscricoes','andamento','encerrado','cancelado')),
+  pote numeric not null default 0, fase int not null default 0, campeao text, criado timestamptz not null default now()
+);
+create table if not exists public.liga_torneio_inscritos (
+  torneio bigint not null references public.liga_torneios on delete cascade, clube text not null references public.liga_clubes,
+  user_id uuid references auth.users on delete set null, pago numeric not null default 0, posicao int, premio numeric,
+  primary key (torneio, clube)
+);
+create unique index if not exists liga_torneio_um_por_tecnico on public.liga_torneio_inscritos (torneio, user_id) where user_id is not null;
+create table if not exists public.liga_torneio_jogos (
+  id bigserial primary key, torneio bigint not null references public.liga_torneios on delete cascade, rodada int not null,
+  casa text not null, fora text not null, quando timestamptz not null,
+  gc int, gf int, pc int, pf int, jogado boolean not null default false, inicio timestamptz, fim timestamptz
+);
+create index if not exists liga_torneio_jogos_t on public.liga_torneio_jogos (torneio, rodada);
+
+create or replace function public.liga_torneio_cancelar(p_id bigint) returns void language plpgsql security definer set search_path = public as $$
+begin
+  update liga_clubes c set caixa = coalesce(c.caixa, 0) + i.pago from liga_torneio_inscritos i where i.torneio = p_id and i.clube = c.id and i.pago > 0;
+  update liga_torneio_inscritos set pago = 0 where torneio = p_id;
+  update liga_torneios set status = 'cancelado', pote = 0 where id = p_id;
+end $$;
+
+create or replace function public.liga_inscrever_torneio(p_id bigint) returns void language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); eu liga_tecnicos; t liga_torneios; c liga_clubes;
+begin
+  select * into t from liga_torneios where id = p_id for update;
+  if t.id is null or t.status <> 'inscricoes' or t.inicio <= now() then raise exception 'As inscrições desse torneio estão fechadas.'; end if;
+  select * into eu from liga_tecnicos where user_id = uid;
+  if eu.clube is null then raise exception 'Você precisa estar num clube para jogar torneios.'; end if;
+  if exists (select 1 from liga_torneio_inscritos where torneio = p_id and (user_id = uid or clube = eu.clube)) then raise exception 'Você já está inscrito nesse torneio.'; end if;
+  if (select count(*) from liga_torneio_inscritos where torneio = p_id) >= t.vagas then raise exception 'O torneio está lotado.'; end if;
+  select * into c from liga_clubes where id = eu.clube for update;
+  if coalesce(c.caixa, 0) < t.taxa then raise exception 'Seu clube não tem dinheiro para pagar a inscrição.'; end if;
+  update liga_clubes set caixa = coalesce(caixa, 0) - t.taxa where id = c.id;
+  insert into liga_torneio_inscritos (torneio, clube, user_id, pago) values (p_id, c.id, uid, t.taxa);
+  update liga_torneios set pote = pote + t.taxa where id = p_id;
+end $$;
+
+create or replace function public.liga_criar_torneio(p_nome text, p_formato text, p_vagas int, p_taxa numeric, p_premio int[], p_inicio timestamptz, p_intervalo int, p_robos boolean)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); eu liga_tecnicos; tid bigint;
+begin
+  select * into eu from liga_tecnicos where user_id = uid;
+  if eu.clube is null then raise exception 'Você precisa estar num clube para criar torneios.'; end if;
+  if length(trim(coalesce(p_nome, ''))) < 3 then raise exception 'Dê um nome ao torneio (pelo menos 3 letras).'; end if;
+  if p_formato = 'mata' and p_vagas not in (4, 8, 16) then raise exception 'Mata-mata: 4, 8 ou 16 vagas.'; end if;
+  if p_formato = 'pontos' and p_vagas not in (4, 6, 8) then raise exception 'Pontos corridos: 4, 6 ou 8 vagas.'; end if;
+  if p_formato not in ('mata', 'pontos') then raise exception 'Formato inválido.'; end if;
+  if p_taxa is null or p_taxa < 0 or p_taxa > 50 then raise exception 'A inscrição deve ser entre R$ 0 e R$ 50 mi.'; end if;
+  if p_premio is null or array_length(p_premio, 1) > least(4, p_vagas) or (select sum(x) from unnest(p_premio) x) <> 100
+     or exists (select 1 from unnest(p_premio) x where x <= 0) then raise exception 'A divisão do prêmio precisa somar 100%%.'; end if;
+  if p_inicio < now() + interval '10 minutes' or p_inicio > now() + interval '14 days' then raise exception 'O início deve ser entre 10 minutos e 14 dias a partir de agora.'; end if;
+  if p_intervalo < 20 or p_intervalo > 2880 then raise exception 'O intervalo entre rodadas deve ser de 20 minutos a 2 dias.'; end if;
+  if (select count(*) from liga_torneios where criador = uid and status in ('inscricoes', 'andamento')) >= 2 then raise exception 'Você já tem 2 torneios abertos.'; end if;
+  insert into liga_torneios (nome, criador, formato, vagas, taxa, premio, inicio, intervalo, robos)
+  values (left(trim(p_nome), 40), uid, p_formato, p_vagas, round(p_taxa, 2), p_premio, date_trunc('minute', p_inicio), p_intervalo, coalesce(p_robos, true)) returning id into tid;
+  perform liga_inscrever_torneio(tid);
+  return tid;
+end $$;
+
+create or replace function public.liga_sair_torneio(p_id bigint) returns void language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); t liga_torneios; i liga_torneio_inscritos;
+begin
+  select * into t from liga_torneios where id = p_id for update;
+  if t.id is null or t.status <> 'inscricoes' or t.inicio <= now() then raise exception 'Não dá mais para sair: o torneio já começou.'; end if;
+  if t.criador = uid then perform liga_torneio_cancelar(p_id); return; end if;   -- o criador saindo cancela o torneio e devolve tudo
+  select * into i from liga_torneio_inscritos where torneio = p_id and user_id = uid;
+  if i.clube is null then raise exception 'Você não está inscrito.'; end if;
+  update liga_clubes set caixa = coalesce(caixa, 0) + i.pago where id = i.clube;
+  delete from liga_torneio_inscritos where torneio = p_id and clube = i.clube;
+  update liga_torneios set pote = pote - i.pago where id = p_id;
+end $$;
+
+-- divide o pote: posições empatadas (ex.: os dois semifinalistas) dividem as fatias que ocupam. Fatia de robô não é paga.
+create or replace function public.liga_torneio_premiar(p_id bigint) returns void language plpgsql security definer set search_path = public as $$
+declare t liga_torneios; g record; v numeric;
+begin
+  select * into t from liga_torneios where id = p_id;
+  for g in select posicao, count(*) c from liga_torneio_inscritos where torneio = p_id and posicao is not null group by posicao loop
+    select coalesce(sum(t.premio[x]), 0) into v from generate_series(g.posicao, g.posicao + g.c - 1) x where x <= array_length(t.premio, 1);
+    update liga_torneio_inscritos set premio = round(t.pote * v / 100 / g.c, 2) where torneio = p_id and posicao = g.posicao;
+  end loop;
+  update liga_clubes c set caixa = coalesce(c.caixa, 0) + i.premio
+    from liga_torneio_inscritos i left join liga_tecnicos tt on tt.user_id = i.user_id
+    where i.torneio = p_id and i.user_id is not null and i.premio > 0 and c.id = coalesce(tt.clube, i.clube);
+  update liga_tecnicos set titulos = titulos || jsonb_build_array('Torneio ' || t.nome)
+    where user_id = (select user_id from liga_torneio_inscritos where torneio = p_id and posicao = 1);
+  update liga_torneios set status = 'encerrado', campeao = (select clube from liga_torneio_inscritos where torneio = p_id and posicao = 1) where id = p_id;
+end $$;
+
+-- roda a cada minuto: começa torneios, sorteia placares no horário e avança as fases (só depois do fim do "ao vivo")
+create or replace function public.liga_torneios_rodar() returns void language plpgsql security definer set search_path = public as $$
+declare t record; g record; n int; k int; ids text[]; vivos text[]; r int; i int; a text; b text; tmp text;
+        fc numeric; ff numeric; ec text; ef text; lc numeric; lf numeric; v_gc int; v_gf int; v_pc int; v_pf int;
+begin
+  for t in select * from liga_torneios where status = 'inscricoes' and inicio <= now() for update skip locked loop
+    select count(*) filter (where user_id is not null), count(*) into n, k from liga_torneio_inscritos where torneio = t.id;
+    if n < 2 or (k < t.vagas and not t.robos) then perform liga_torneio_cancelar(t.id); continue; end if;
+    if k < t.vagas then
+      insert into liga_torneio_inscritos (torneio, clube)
+      select t.id, c.id from liga_clubes c
+      where not exists (select 1 from liga_torneio_inscritos x where x.torneio = t.id and x.clube = c.id)
+        and not exists (select 1 from liga_tecnicos h where h.clube = c.id)
+      order by abs(c.forca - (select avg(c2.forca) from liga_clubes c2 join liga_torneio_inscritos x2 on x2.clube = c2.id and x2.torneio = t.id)) + random() * 6
+      limit t.vagas - k;
+    end if;
+    select array_agg(clube order by random()) into ids from liga_torneio_inscritos where torneio = t.id;
+    if t.formato = 'mata' then
+      for i in 0 .. t.vagas / 2 - 1 loop insert into liga_torneio_jogos (torneio, rodada, casa, fora, quando) values (t.id, 1, ids[2 * i + 1], ids[2 * i + 2], t.inicio); end loop;
+    else
+      for r in 0 .. t.vagas - 2 loop
+        for i in 1 .. t.vagas / 2 loop
+          a := ids[i]; b := ids[t.vagas - i + 1]; if r % 2 = 1 then tmp := a; a := b; b := tmp; end if;
+          insert into liga_torneio_jogos (torneio, rodada, casa, fora, quando) values (t.id, r + 1, a, b, t.inicio + make_interval(mins => r * t.intervalo));
+        end loop;
+        ids := array[ids[1]] || array[ids[t.vagas]] || ids[2:t.vagas - 1];
+      end loop;
+    end if;
+    update liga_torneios set status = 'andamento', fase = 1 where id = t.id;
+  end loop;
+
+  for g in select j.*, tt.formato from liga_torneio_jogos j join liga_torneios tt on tt.id = j.torneio where not j.jogado and j.quando <= now() for update of j skip locked loop
+    select forca into fc from liga_clubes where id = g.casa; select forca into ff from liga_clubes where id = g.fora;
+    select coalesce(t2.estilo, 'eq') into ec from liga_tecnicos t1 left join liga_taticas t2 using (user_id) where t1.clube = g.casa;
+    select coalesce(t2.estilo, 'eq') into ef from liga_tecnicos t1 left join liga_taticas t2 using (user_id) where t1.clube = g.fora;
+    lc := 1.3 * exp(((fc + 1) - ff) / 22); lf := 1.3 * exp((ff - (fc + 1)) / 22);
+    if ec = 'of' then lc := lc * 1.15; lf := lf * 1.12; elsif ec = 'de' then lc := lc * 0.85; lf := lf * 0.82; end if;
+    if ef = 'of' then lf := lf * 1.15; lc := lc * 1.12; elsif ef = 'de' then lf := lf * 0.85; lc := lc * 0.82; end if;
+    v_gc := liga_poisson(lc); v_gf := liga_poisson(lf); v_pc := null; v_pf := null;
+    if g.formato = 'mata' and v_gc = v_gf then v_pc := 3 + floor(random() * 3); v_pf := case when random() < .5 then v_pc - 1 - floor(random() * 2) else v_pc + 1 end; end if;
+    update liga_torneio_jogos set gc = v_gc, gf = v_gf, pc = v_pc, pf = v_pf, jogado = true, inicio = g.quando, fim = g.quando + interval '16 minutes' where id = g.id;
+  end loop;
+
+  for t in select * from liga_torneios where status = 'andamento' for update skip locked loop
+    if exists (select 1 from liga_torneio_jogos where torneio = t.id and (not jogado or fim > now())) then continue; end if;
+    if t.formato = 'mata' then
+      select array_agg(case when gc > gf or (gc = gf and pc > pf) then casa else fora end order by id) into vivos from liga_torneio_jogos where torneio = t.id and rodada = t.fase;
+      if array_length(vivos, 1) > 1 then
+        for i in 0 .. array_length(vivos, 1) / 2 - 1 loop
+          insert into liga_torneio_jogos (torneio, rodada, casa, fora, quando)
+          values (t.id, t.fase + 1, vivos[2 * i + 1], vivos[2 * i + 2], greatest((select max(quando) from liga_torneio_jogos where torneio = t.id) + make_interval(mins => t.intervalo), now() + interval '2 minutes'));
+        end loop;
+        update liga_torneios set fase = fase + 1 where id = t.id;
+        continue;
+      end if;
+      update liga_torneio_inscritos set posicao = 1 where torneio = t.id and clube = vivos[1];
+      update liga_torneio_inscritos set posicao = 2 where torneio = t.id and clube in (select case when gc > gf or (gc = gf and pc > pf) then fora else casa end from liga_torneio_jogos where torneio = t.id and rodada = t.fase);
+      update liga_torneio_inscritos set posicao = 3 where torneio = t.id and clube in (select case when gc > gf or (gc = gf and pc > pf) then fora else casa end from liga_torneio_jogos where torneio = t.id and rodada = t.fase - 1);
+    else
+      update liga_torneio_inscritos i set posicao = o.pos from (
+        select clube, row_number() over (order by sum(p) desc, sum(sg) desc, sum(gp) desc, random()) as pos from (
+          select casa as clube, case when gc > gf then 3 when gc = gf then 1 else 0 end as p, gc - gf as sg, gc as gp from liga_torneio_jogos where torneio = t.id
+          union all select fora, case when gf > gc then 3 when gc = gf then 1 else 0 end, gf - gc, gf from liga_torneio_jogos where torneio = t.id) x group by clube) o
+      where i.torneio = t.id and i.clube = o.clube;
+    end if;
+    perform liga_torneio_premiar(t.id);
+  end loop;
+end $$;
+
+alter table public.liga_torneios enable row level security;
+alter table public.liga_torneio_inscritos enable row level security;
+alter table public.liga_torneio_jogos enable row level security;
+drop policy if exists ler on public.liga_torneios; create policy ler on public.liga_torneios for select using (true);
+drop policy if exists ler on public.liga_torneio_inscritos; create policy ler on public.liga_torneio_inscritos for select using (true);
+drop policy if exists ler on public.liga_torneio_jogos; create policy ler on public.liga_torneio_jogos for select using (true);
+grant select on public.liga_torneios, public.liga_torneio_inscritos, public.liga_torneio_jogos to anon, authenticated;
+revoke all on function public.liga_torneios_rodar(), public.liga_torneio_premiar(bigint), public.liga_torneio_cancelar(bigint) from public, anon, authenticated;
+revoke all on function public.liga_criar_torneio(text, text, int, numeric, int[], timestamptz, int, boolean), public.liga_inscrever_torneio(bigint), public.liga_sair_torneio(bigint) from public, anon;
+grant execute on function public.liga_criar_torneio(text, text, int, numeric, int[], timestamptz, int, boolean), public.liga_inscrever_torneio(bigint), public.liga_sair_torneio(bigint) to authenticated;
+do $$ begin perform cron.unschedule('liga-torneios'); exception when others then null; end $$;
+select cron.schedule('liga-torneios', '* * * * *', $$select public.liga_torneios_rodar()$$);
 
 -- Para testar sem esperar: select public.liga_rodar_turno(1);  (e 20 min depois, ou na hora: select public.liga_rodar_turno(2);)

@@ -276,6 +276,20 @@
               <p><button id="am-desafiar">📨 Enviar desafio</button> <span class="dica" id="am-msg"></span></p>
             </div>
             <div class="res-l" id="am-lista"></div></div>
+          <div class="caixa" style="margin-top:12px" id="tn-box"><h2>🏆 Torneios dos técnicos</h2>
+            <p class="dica">Campeonatos fora do horário da liga (pré-temporada, férias, fim de semana…). Cada técnico paga a inscrição com o <b>dinheiro do clube</b> e o pote vai para os primeiros colocados. Não contam na tabela da liga nem dão tokens.</p>
+            <details id="tn-criar"><summary><b>➕ Criar torneio</b></summary>
+              <div class="ft"><label>Nome</label><input type="text" id="tn-nome" maxlength="40" placeholder="Ex.: Copa de Verão"></div>
+              <div class="ft"><label>Formato</label><select id="tn-formato"><option value="mata">Mata-mata (jogo único, empate → pênaltis)</option><option value="pontos">Pontos corridos (todos contra todos)</option></select></div>
+              <div class="ft"><label>Vagas</label><select id="tn-vagas"></select></div>
+              <div class="ft"><label>Inscrição (R$ mi)</label><input type="text" id="tn-taxa" inputmode="decimal" value="1"></div>
+              <div class="ft"><label>Prêmio</label><select id="tn-premio"></select></div>
+              <div class="ft"><label>Início</label><input type="datetime-local" id="tn-inicio" style="font:inherit;background:var(--painel2);color:var(--texto);border:1px solid var(--borda);border-radius:8px;padding:8px"></div>
+              <div class="ft"><label>Entre rodadas</label><select id="tn-intervalo"><option value="20">20 minutos</option><option value="30">30 minutos</option><option value="60">1 hora</option><option value="120">2 horas</option><option value="1440">1 dia</option></select></div>
+              <label class="dica"><input type="checkbox" id="tn-robos" checked> Completar as vagas que sobrarem com clubes robô (se um robô ficar entre os premiados, a parte dele não é paga)</label>
+              <p><button class="prim" id="tn-criar-bt">🏆 Criar e me inscrever</button> <span class="dica" id="tn-msg"></span></p>
+            </details>
+            <div class="res-l" id="tn-lista"></div></div>
           <div class="caixa" style="margin-top:12px"><h2>Jogos da sua divisão</h2><p class="dica">🔴 = ao vivo agora (toque em 📺 Assistir). O placar só aparece quando o jogo termina.</p><div class="res-l" id="on-res"></div></div>
           <div class="caixa" style="margin-top:12px"><h2>Técnicos da liga</h2><div class="res-l" id="on-tecs"></div></div>
         </div>
@@ -1779,6 +1793,17 @@ const ONAPI = {
   async aceitar(clube) { const r = await SB.rpc("liga_aceitar", { p_clube: clube }); if (r.error) throw r.error; return r.data; },
   async amistosos(uid) { const r = await SB.from("liga_amistosos").select("*").or(`desafiante.eq.${uid},desafiado.eq.${uid}`).order("quando", { ascending: false }).limit(40); return r.error ? [] : r.data; },
   async desafiar(adv, quando) { const r = await SB.rpc("liga_desafiar", { p_adversario: adv, p_quando: quando }); if (r.error) throw r.error; return r.data; },
+  async torneios() {
+    const desde = new Date(Date.now() - 7 * 86400000).toISOString();
+    const t = await SB.from("liga_torneios").select("*").or(`status.in.(inscricoes,andamento),inicio.gte.${desde}`).order("inicio", { ascending: true }).limit(40);
+    if (t.error || !t.data.length) return { torneios: [], inscritos: [], jogos: [] };
+    const ids = t.data.map(x => x.id);
+    const [i, j] = await Promise.all([SB.from("liga_torneio_inscritos").select("*").in("torneio", ids), SB.from("liga_torneio_jogos").select("*").in("torneio", ids).order("id")]);
+    return { torneios: t.data, inscritos: i.data || [], jogos: j.data || [] };
+  },
+  async criarTorneio(o) { const r = await SB.rpc("liga_criar_torneio", o); if (r.error) throw r.error; return r.data; },
+  async inscrever(id) { const r = await SB.rpc("liga_inscrever_torneio", { p_id: id }); if (r.error) throw r.error; },
+  async sairTorneio(id) { const r = await SB.rpc("liga_sair_torneio", { p_id: id }); if (r.error) throw r.error; },
   async responder(id, aceitar) { const r = await SB.rpc("liga_responder_amistoso", { p_id: id, p_aceitar: aceitar }); if (r.error) throw r.error; return r.data; }
 };
 const clubeOn = id => { const c = ON.clubes[id]; return c ? { id: c.id, nome: c.nome, curto: c.sigla, cor: c.cor, cor2: c.cor2 } : { id, nome: id || "—", curto: "?", cor: "#444", cor2: "#fff" }; };
@@ -1803,6 +1828,7 @@ async function recarregarOnline() {
   if (!ON.eu) { $("on-nac").innerHTML = NACIONALIDADES.map(([n, b]) => `<option>${b} ${n}</option>`).join(""); return onMostrar("novo"); }
   ON.tatica = await ONAPI.minhaTatica(ON.user.id);
   ON.amistosos = await ONAPI.amistosos(ON.user.id).catch(() => []);
+  ON.tn = await ONAPI.torneios().catch(() => ({ torneios: [], inscritos: [], jogos: [] }));
   desenharOnline(); onMostrar("hub");
 }
 function ordemOn(div) { return ON.classif.filter(c => c.div === div).sort((a, b) => b.p - a.p || b.v - a.v || (b.gp - b.gcontra) - (a.gp - a.gcontra) || b.gp - a.gp || a.clube.localeCompare(b.clube)); }
@@ -1822,11 +1848,13 @@ function linhaJogoOn(j, eu) {
 function jogosOnHtml(lista, eu) {
   return [1, 2].map(t => { const l = lista.filter(j => (j.turno || 1) === t); return l.length ? `<h3>${HORA_TURNO[t]}</h3>` + l.map(j => linhaJogoOn(j, eu)).join("") : ""; }).join("");
 }
-const chaveVivoOn = () => [...(ON.jogos || []), ...(ON.amistosos || [])].map(j => (aoVivo(j) ? "v" : encerrado(j) ? "e" : "n")).join("");
+const chaveVivoOn = () => [...(ON.jogos || []), ...(ON.amistosos || []), ...(ON.tn?.jogos || [])].map(j => (aoVivo(j) ? "v" : encerrado(j) ? "e" : "n")).join("");
 setInterval(() => {                                        // mantém a tela da liga em dia perto da hora dos jogos
   if (!$("online").classList.contains("on") || !ON.eu || document.hidden) return;
   const a = new Date(), min = a.getUTCHours() * 60 + a.getUTCMinutes();
-  const amDevido = (ON.amistosos || []).some(x => x.status === "aceito" && new Date(x.quando) <= a);
+  const amDevido = (ON.amistosos || []).some(x => x.status === "aceito" && new Date(x.quando) <= a)
+    || (ON.tn?.jogos || []).some(x => !x.jogado && new Date(x.quando) <= a) || (ON.tn?.torneios || []).some(x => x.status === "inscricoes" && new Date(x.inicio) <= a)
+    || (ON.tn?.torneios || []).some(x => x.status === "andamento" && !(ON.tn.jogos || []).some(j => j.torneio === x.id && !encerrado(j)));
   if ((min >= 899 && min <= 940 && a.getUTCSeconds() < 30) || amDevido) recarregarOnline().catch(() => {});
   else if (ON._chave !== chaveVivoOn()) desenharOnline(); else atualizarRelogioOn();
 }, 30000);
@@ -1840,7 +1868,7 @@ function desenharOnline() {
   const eu = ON.eu, est = ON.estado, c = clubeOn(eu.clube || eu.ex_clube), div = eu.demitido ? eu.div : (ON.clubes[eu.clube]?.div || eu.div);
   const pos = eu.demitido ? null : ordemOn(div).findIndex(x => x.clube === eu.clube) + 1;
   const corConf = eu.conf > 60 ? "var(--verde)" : eu.conf > 30 ? "var(--amar)" : "var(--verm)";
-  $("on-topo").innerHTML = `${eu.demitido ? "" : escudo(c)}<div><h2>${esc(eu.demitido ? "Sem clube" : c.nome)}</h2><div class="dica">Técnico ${esc(eu.nome)} ${esc((eu.nac || "").split(" ")[0])} · nível ${NUM_DIV[DIVS[eu.nivel]]} divisão · Série ${div} ${est.temporada} · rodada ${est.rodada}${pos ? ` · ${pos}º lugar` : ""}${(eu.titulos || []).length ? " · 🏆 " + eu.titulos.length : ""}</div></div>
+  $("on-topo").innerHTML = `${eu.demitido ? "" : escudo(c)}<div><h2>${esc(eu.demitido ? "Sem clube" : c.nome)}</h2><div class="dica">Técnico ${esc(eu.nome)} ${esc((eu.nac || "").split(" ")[0])} · nível ${NUM_DIV[DIVS[eu.nivel]]} divisão · Série ${div} ${est.temporada} · rodada ${est.rodada}${pos ? ` · ${pos}º lugar` : ""}${!eu.demitido && ON.clubes[eu.clube]?.caixa != null ? ` · 💰 caixa ${dinheiro(Number(ON.clubes[eu.clube].caixa))}` : ""}${(eu.titulos || []).length ? " · 🏆 " + eu.titulos.length : ""}</div></div>
     <div style="margin-left:auto" class="dica">Confiança da diretoria <span class="conf"><i style="width:${eu.conf}%;background:${corConf}"></i></span> ${eu.conf}%</div>`;
   ON._chave = chaveVivoOn();
   const doMeu = j => j.casa === eu.clube || j.fora === eu.clube;
@@ -1864,7 +1892,7 @@ function desenharOnline() {
     (anterior.length ? `<h3>Rodada ${est.rodada - 1}</h3>${jogosOnHtml(anterior, eu)}` : "") + (!atual.some(j => j.jogado) && anterior.length ? `<h3>Rodada ${est.rodada} (próxima)</h3>${jogosOnHtml(atual, eu)}` : "");
   const humanos = new Map(ON.tecnicos.filter(t => t.clube).map(t => [t.clube, t.nome]));
   $("on-tecs").innerHTML = ON.tecnicos.slice().sort((a, b) => a.nivel - b.nivel || (b.titulos?.length || 0) - (a.titulos?.length || 0)).map(t => `<div>👔 <b>${esc(t.nome)}</b> ${esc((t.nac || "").split(" ")[0])} · ${t.demitido ? "sem clube" : esc(nomeOn(t.clube))} · nível ${NUM_DIV[DIVS[t.nivel]]}${t.titulos?.length ? " · 🏆 " + t.titulos.length : ""}</div>`).join("");
-  desenharAmistosos();
+  desenharAmistosos(); desenharTorneios();
   ON.aba ||= div;
   $("on-abas").innerHTML = DIVS.map(d => `<button data-on-tab="${d}" class="${d === ON.aba ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
   const ord = ordemOn(ON.aba), iD = DIVS.indexOf(ON.aba), n = ord.length;
@@ -1912,6 +1940,66 @@ function desenharAmistosos() {
   ];
   $("am-lista").innerHTML = secoes.filter(([, l]) => l.length).map(([t, l, f]) => (t ? `<h3>${t}</h3>` : "") + l.map(a => `<div>${f(a)}</div>`).join("")).join("");
 }
+/* ---------- torneios dos técnicos ---------- */
+const PREMIOS = { "100": [100], "70/30": [70, 30], "60/30/10": [60, 30, 10], "50/25/15/10": [50, 25, 15, 10] };
+const premioPadrao = v => v <= 4 ? "70/30" : v <= 8 ? "60/30/10" : "50/25/15/10";
+const premioTxt = p => p.map((x, i) => `${i + 1}º ${x}%`).join(" · ");
+function opcoesTorneio() {
+  const f = $("tn-formato").value, vs = f === "mata" ? [4, 8, 16] : [4, 6, 8], vAnt = Number($("tn-vagas").value);
+  $("tn-vagas").innerHTML = vs.map(v => `<option value="${v}">${v} clubes</option>`).join(""); if (vs.includes(vAnt)) $("tn-vagas").value = vAnt;
+  const v = Number($("tn-vagas").value), pAnt = $("tn-premio").value;
+  $("tn-premio").innerHTML = Object.entries(PREMIOS).filter(([, l]) => l.length <= Math.min(4, v)).map(([k, l]) => `<option value="${k}">${premioTxt(l)}${k === premioPadrao(v) ? " (padrão)" : ""}</option>`).join("");
+  $("tn-premio").value = PREMIOS[pAnt] && PREMIOS[pAnt].length <= Math.min(4, v) && pAnt !== premioPadrao(vAnt) ? pAnt : premioPadrao(v);
+}
+$("tn-formato").onchange = opcoesTorneio; $("tn-vagas").onchange = opcoesTorneio;
+function desenharTorneios() {
+  const eu = ON.eu, D = ON.tn || { torneios: [], inscritos: [], jogos: [] };
+  $("tn-criar").hidden = !!eu.demitido;
+  if (!$("tn-vagas").options.length) opcoesTorneio();
+  if (!$("tn-inicio").value) { const d = new Date(Date.now() + 2 * 3600000); d.setMinutes(0, 0, 0); $("tn-inicio").value = new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+  const insc = id => D.inscritos.filter(i => i.torneio === id), meu = t => insc(t.id).some(i => i.user_id === eu.user_id);
+  const nomeIns = i => `${esc(nomeOn(i.clube))}${i.user_id ? ` <span class="dica">(${esc(tecOn(i.user_id)?.nome || "técnico")})</span>` : " <span class='dica'>🤖</span>"}`;
+  const cab = t => `<h3>${esc(t.nome)}${meu(t) ? " ⭐" : ""}</h3><div class="dica">${t.formato === "mata" ? "Mata-mata" : "Pontos corridos"} · ${t.vagas} clubes · inscrição ${dinheiro(Number(t.taxa))} · pote <b>${dinheiro(Number(t.pote))}</b> · ${premioTxt(t.premio)} · criado por ${esc(tecOn(t.criador)?.nome || "técnico")}</div>`;
+  const jogosHtml = t => { const js = D.jogos.filter(j => j.torneio === t.id), rods = [...new Set(js.map(j => j.rodada))];
+    return rods.map(r => { const l = js.filter(j => j.rodada === r), nome = t.formato === "mata" ? ({ 1: "Final", 2: "Semifinal", 4: "Quartas", 8: "Oitavas" }[l.length] || `Rodada ${r}`) : `Rodada ${r}`;
+      return `<div class="dica" style="margin-top:4px"><b>${nome}</b> · ${dataHora(l[0].quando)}</div>` + l.map(j => { const eu2 = j.casa === eu.clube || j.fora === eu.clube, b = x => eu2 ? `<b>${x}</b>` : x;
+        if (aoVivo(j)) return `<div>${b(`🔴 ${esc(nomeOn(j.casa))} × ${esc(nomeOn(j.fora))}`)} <button data-tn-ver="${j.id}" style="padding:1px 7px;font-size:12px">📺 Assistir</button></div>`;
+        if (encerrado(j)) return `<div>${b(`${esc(nomeOn(j.casa))} ${j.gc} × ${j.gf} ${esc(nomeOn(j.fora))}`)}${j.pc != null ? ` <span class="dica">(pên. ${j.pc}–${j.pf})</span>` : ""} <button data-tn-ver="${j.id}" style="padding:1px 7px;font-size:12px">📺</button></div>`;
+        return `<div>${b(`${esc(nomeOn(j.casa))} × ${esc(nomeOn(j.fora))}`)}</div>`; }).join(""); }).join(""); };
+  const tabelaPts = t => { const p = {}; for (const i of insc(t.id)) p[i.clube] = { P: 0, SG: 0, J: 0 };
+    for (const j of D.jogos.filter(x => x.torneio === t.id && encerrado(x))) { const a = p[j.casa], b = p[j.fora]; if (!a || !b) continue; a.J++; b.J++; a.SG += j.gc - j.gf; b.SG += j.gf - j.gc; if (j.gc > j.gf) a.P += 3; else if (j.gc < j.gf) b.P += 3; else { a.P++; b.P++; } }
+    return `<table class="tab"><tbody>${Object.entries(p).sort((x, y) => y[1].P - x[1].P || y[1].SG - x[1].SG).map(([id, x], k) => `<tr class="${id === eu.clube ? "eu" : ""}"><td>${k + 1}</td><td>${esc(nomeOn(id))}</td><td><b>${x.P}</b></td><td>${x.J}</td><td>${x.SG}</td></tr>`).join("")}</tbody></table>`; };
+  const abertos = D.torneios.filter(t => t.status === "inscricoes"), andamento = D.torneios.filter(t => t.status === "andamento"), fim = D.torneios.filter(t => ["encerrado", "cancelado"].includes(t.status)).reverse().slice(0, 5);
+  let h = "";
+  if (abertos.length) h += `<h3>📝 Inscrições abertas</h3>` + abertos.map(t => { const l = insc(t.id);
+    return `<div style="margin:8px 0">${cab(t)}<div>Começa <b>${dataHora(t.inicio)}</b> · rodadas a cada ${t.intervalo >= 60 ? (t.intervalo / 60) + " h" : t.intervalo + " min"} · ${l.length}/${t.vagas} inscritos${t.robos ? " (o resto vira robô)" : " (sem robôs: precisa lotar)"}</div>
+      <div class="dica">${l.map(nomeIns).join(", ")}</div>
+      ${eu.demitido ? "" : meu(t) ? `<button data-tn-sair="${t.id}">${t.criador === eu.user_id ? "Cancelar torneio (devolve as inscrições)" : "Sair (devolve a inscrição)"}</button>` : l.length < t.vagas ? `<button class="prim" data-tn-entrar="${t.id}">✍ Inscrever (${dinheiro(Number(t.taxa))})</button>` : "<span class='dica'>Lotado</span>"}</div>`; }).join("");
+  if (andamento.length) h += `<h3>⚽ Em andamento</h3>` + andamento.map(t => `<div style="margin:8px 0">${cab(t)}${t.formato === "pontos" ? tabelaPts(t) : ""}${jogosHtml(t)}</div>`).join("");
+  if (fim.length) h += `<h3>🏁 Últimos</h3>` + fim.map(t => { const l = insc(t.id).filter(i => i.posicao).sort((a, b) => a.posicao - b.posicao);
+    return `<div style="margin:6px 0"><b>${esc(t.nome)}</b> — ${t.status === "cancelado" ? "<span class='dica'>cancelado (inscrições devolvidas)</span>" : `🏆 ${esc(nomeOn(t.campeao))}<div class="dica">${l.filter(i => Number(i.premio) > 0).map(i => `${i.posicao}º ${esc(nomeOn(i.clube))}${i.user_id ? "" : " 🤖"}: ${dinheiro(Number(i.premio))}`).join(" · ")}</div>`}</div>`; }).join("");
+  $("tn-lista").innerHTML = h || "<p class='dica'>Nenhum torneio aberto. Crie o primeiro!</p>";
+}
+$("tn-criar-bt").onclick = async () => {
+  const taxa = parseFloat(String($("tn-taxa").value).replace(",", ".")), ini = $("tn-inicio").value;
+  if (!(taxa >= 0)) return ($("tn-msg").textContent = "Digite o valor da inscrição (pode ser 0).");
+  if (!ini) return ($("tn-msg").textContent = "Escolha o dia e a hora do início.");
+  try {
+    await ONAPI.criarTorneio({ p_nome: $("tn-nome").value, p_formato: $("tn-formato").value, p_vagas: Number($("tn-vagas").value), p_taxa: taxa, p_premio: PREMIOS[$("tn-premio").value],
+      p_inicio: new Date(ini).toISOString(), p_intervalo: Number($("tn-intervalo").value), p_robos: $("tn-robos").checked });
+    $("tn-msg").textContent = "✅ Torneio criado! Chame os outros técnicos para se inscrever."; $("tn-nome").value = ""; await recarregarOnline();
+  } catch (e) { $("tn-msg").textContent = "⚠ " + (/liga_criar_torneio|function/.test(e.message) ? "O servidor ainda não tem torneios: rode de novo o liga.sql no Supabase." : e.message); }
+};
+$("tn-lista").onclick = async e => {
+  const ver = e.target.closest("[data-tn-ver]"), ent = e.target.closest("[data-tn-entrar]"), sai = e.target.closest("[data-tn-sair]");
+  if (ver) { const j = ON.tn.jogos.find(x => x.id === Number(ver.dataset.tnVer)), t = j && ON.tn.torneios.find(x => x.id === j.torneio); if (j) assistirReplay(null, { ...j, id: "tn" + j.id, jogado: true, titulo: t ? t.nome : "Torneio" }); return; }
+  try {
+    if (ent) await ONAPI.inscrever(Number(ent.dataset.tnEntrar));
+    else if (sai) { if (!confirm("Tem certeza?")) return; await ONAPI.sairTorneio(Number(sai.dataset.tnSair)); }
+    else return;
+    await recarregarOnline();
+  } catch (err) { alert(err.message); }
+};
 $("am-jogar").onclick = () => {
   const eu = ON.eu; if (!eu?.clube) return;
   const meu = garantirTimeOn(ON.clubes[eu.clube]), adv = garantirTimeOn(ON.clubes[$("am-adv").value]);
