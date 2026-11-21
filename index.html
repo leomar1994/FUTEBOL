@@ -459,7 +459,8 @@
   <p class="dica" id="esc-ajuda">Arraste os botões no campo para mudar as posições. Arraste um jogador da lista para cima de um botão (ou um botão para cima de outro) para trocar.</p>
   <div class="esc-grade">
     <div><div class="prancheta" id="prancheta"></div>
-      <div class="dica legenda">Posição: <i style="background:var(--verde)"></i>dele <i style="background:var(--amar)"></i>improvisado <i style="background:var(--verm)"></i>fora de posição</div></div>
+      <div class="dica legenda">Posição: <i style="background:var(--verde)"></i>dele <i style="background:var(--amar)"></i>improvisado <i style="background:var(--verm)"></i>fora de posição</div>
+      <div id="esc-cobs" style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;margin-top:10px;align-items:center"></div></div>
     <div><h3>Titulares</h3><div id="esc-tit-l"></div><h3>Reservas</h3><div id="esc-res-l"></div></div>
   </div>
   <p style="text-align:right"><button id="esc-cancelar">↩ Voltar</button> <button class="prim" id="esc-ok">▶ Começar partida</button></p>
@@ -537,7 +538,19 @@ function caracteristicas(nome, pos, forca) {
 // o que o jogador aprendeu com a experiência (carreira): novas características, defeitos corrigidos e posições novas
 const aprendDe = (nome, pos) => (typeof C !== "undefined" && C?.aprend?.[nome + "|" + pos]) || null;
 function comAprendidas(base, chave) { const a = typeof C !== "undefined" && C?.aprend?.[chave]; if (!a) return base; return [...base.filter(k => !(a.sem || []).includes(k)), ...(a.car || []).filter(k => !base.includes(k))]; }
-const posAprendidas = (nome, pos) => aprendDe(nome, pos)?.pos || [];
+// posições que cada um pode aprender (parecidas com a de origem)
+const APRENDE = { ZAG: ["VOL", "LD", "LE"], LD: ["LE", "ZAG"], LE: ["LD", "ZAG"], VOL: ["ZAG", "MC"], MC: ["VOL", "MEI", "PE", "PD"], MEI: ["MC", "PE", "PD"], PE: ["PD", "MEI", "CA"], PD: ["PE", "MEI", "CA"], CA: ["PD", "PE"] };
+function secundarias(nome, pos) {                           // [{p: "VOL", f: 40, xp: 0}] — começa com metade da força e sobe com XP
+  const a = aprendDe(nome, pos); if (!a?.pos?.length) return [];
+  a.pos = a.pos.map(x => typeof x === "string" ? { p: x, f: null, xp: 0 } : x); return a.pos;
+}
+const posAprendidas = (nome, pos) => secundarias(nome, pos).map(x => x.p);
+const forcaSec = (nome, pos, forca, papel) => { const s2 = secundarias(nome, pos).find(x => x.p === papel); return s2 ? Math.min(forca, s2.f ?? Math.round(forca / 2)) : forca; };
+// nível (1 a 5) de cada característica; sobe com XP. Defeitos não têm nível.
+const nivelHab = (nome, pos, forca, k) => (typeof C !== "undefined" && C?.hab?.[nome + "|" + pos]?.[k]?.n) || (forca >= 84 ? 3 : forca >= 76 ? 2 : 1);
+// persuasão: talento escondido de cada jogador (0–100), só vale para o capitão
+const persuasao = nome => Math.round(semente("pers" + nome)() * 100);
+function hab(p, k) { if (!tem(p, k)) return 0; if (k === "ind" || k === "fol") return 1; return .6 + .2 * (p.hab?.[k] || 1); }   // nível 1 = 0,8 · nível 5 = 1,6
 const tem = (p, k) => !!p?.car?.includes(k);
 const carHtml = l => (l || []).map(k => `<span class="car ${k === "ind" || k === "fol" ? "neg" : ""}" title="${CAR[k][1]}">${CAR[k][0]}</span>`).join("");
 const carJog = j => carHtml(caracteristicas(j[0], j[1], j[2]));            // jogador no formato [nome, pos, força, idade]
@@ -557,11 +570,25 @@ function montarTime(base, formacao, estilo, lado) {
   }
   const reservas = pool.filter(p => !usados.has(p.id));
   let n = 1; [...titulares, ...reservas].forEach(p => { p.num = n++; });
-  const ent = (p, slot) => ({ ...p, car: caracteristicas(p.nome, p.pos, p.forca), papel: slot ? slot[0] : p.pos, bx: slot ? slot[1] : 0, by: slot ? slot[2] : 0, nota: 6.0, folego: 100, gols: 0, assist: 0, cartao: 0, fora: false, saiu: false, entrou: false, toques: 0, x: 0, y: 0, px: 0, py: 0 });
-  return { base, nome: base.nome, curto: base.curto, cor: base.cor, cor2: base.cor2, lado, formacao, estilo, marcacao: "normal", jogada: "misto",
+  const ent = (p, slot) => ({ ...p, car: caracteristicas(p.nome, p.pos, p.forca), pers: persuasao(p.nome),
+    hab: Object.fromEntries(caracteristicas(p.nome, p.pos, p.forca).map(k => [k, nivelHab(p.nome, p.pos, p.forca, k)])),
+    fPos: Object.fromEntries(secundarias(p.nome, p.pos).map(x => [x.p, forcaSec(p.nome, p.pos, p.forca, x.p)])), papel: slot ? slot[0] : p.pos, bx: slot ? slot[1] : 0, by: slot ? slot[2] : 0, nota: 6.0, folego: 100, gols: 0, assist: 0, cartao: 0, fora: false, saiu: false, entrou: false, toques: 0, x: 0, y: 0, px: 0, py: 0 });
+  const t = { base, nome: base.nome, curto: base.curto, cor: base.cor, cor2: base.cor2, lado, formacao, estilo, marcacao: "normal", jogada: "misto",
     jog: titulares.map((p, i) => ent(p, slots[i])), banco: reservas.map(p => ent(p, null)), subs: 0, janelas: 0, gols: 0,
     st: { posse: 0, chutes: 0, alvo: 0, esc: 0, faltas: 0, amarelos: 0, vermelhos: 0, passes: 0, passesCertos: 0, desarmes: 0, defesas: 0 } };
+  t.cob = cobPadrao(t); return t;
 }
+/* cobradores oficiais e capitão (o técnico pode trocar na escalação) */
+const COBS = [["pen", "Pênalti"], ["fal", "Falta"], ["escE", "Escanteio esquerdo"], ["escD", "Escanteio direito"], ["cap", "Capitão"]];
+function cobPadrao(t) {
+  const l = t.jog.filter(p => p.papel !== "GOL"), melhor = f => l.slice().sort((a, b) => f(b) - f(a))[0]?.nome;
+  return { pen: melhor(p => hab(p, "pen") * 20 + (p.papel === "CA" ? 5 : 0) + p.forca / 10), fal: melhor(p => hab(p, "fal") * 20 + p.forca / 10),
+    escE: melhor(p => hab(p, "cru") * 15 + hab(p, "fal") * 8 + (p.papel === "PE" || p.papel === "LE" ? 4 : 0) + p.forca / 10),
+    escD: melhor(p => hab(p, "cru") * 15 + hab(p, "fal") * 8 + (p.papel === "PD" || p.papel === "LD" ? 4 : 0) + p.forca / 10),
+    cap: t.jog.slice().sort((a, b) => (b.idade + b.forca / 4) - (a.idade + a.forca / 4))[0]?.nome };
+}
+const oficial = (t, tipo) => { const n = t.cob?.[tipo]; return n ? ativos(t).find(p => p.nome === n && p.papel !== "GOL") : null; };
+const capitao = t => { const n = t.cob?.cap; return n ? ativos(t).find(p => p.nome === n) : null; };
 
 /* ===================== estado da partida ===================== */
 let J = null;   // { casa, fora, meu, seg, posse(time), dono(jogador), bola{x,y}, anim, eventos... }
@@ -636,14 +663,15 @@ const adapt = p => { const k = grauPos(p.papel, p.pos, p.pos2); return k < 0 ? 0
 const MARC = { leve: { tackle: .06, falta: .2, cartao: .12, verm: .008, lane: 8, folego: -.08 }, normal: { tackle: 0, falta: .34, cartao: .22, verm: .015, lane: 9, folego: 0 },
   pesado: { tackle: -.06, falta: .4, cartao: .28, verm: .015, lane: 10, folego: .1 }, mpesado: { tackle: -.11, falta: .46, cartao: .34, verm: .022, lane: 11, folego: .18 } };
 const marc = t => MARC[t?.marcacao] || MARC.normal;
-const forcaAtual = p => p.forca * adapt(p) * (0.72 + 0.28 * p.folego / 100);
+const forcaNaFuncao = p => p.fPos?.[p.papel] ?? p.forca;   // na posição secundária ele rende a força daquela posição
+const forcaAtual = p => forcaNaFuncao(p) * adapt(p) * (0.72 + 0.28 * p.folego / 100);
 
 /* ===================== motor: um lance por vez ===================== */
 function noCorredor(p, a, b) {                            // distância de p até o trajeto a→b e o ponto mais próximo nele
   const vx = b.x - a.x, vy = b.y - a.y, k = lim(((p.x - a.x) * vx + (p.y - a.y) * vy) / (vx * vx + vy * vy || 1), 0, 1), pt = { x: a.x + vx * k, y: a.y + vy * k };
   return { d: dist(p, pt), pt };
 }
-const cobrador = (t, tipo) => ativos(t).filter(p => p.papel !== "GOL" && (["MEI", "PE", "PD", "MC", "CA"].includes(p.papel) || tem(p, tipo))).sort((a, b) => (tem(b, tipo) - tem(a, tipo)) || forcaAtual(b) - forcaAtual(a))[0] || ativos(t).filter(p => p.papel !== "GOL")[0];
+const cobrador = (t, tipo) => oficial(t, tipo) || ativos(t).filter(p => p.papel !== "GOL" && (["MEI", "PE", "PD", "MC", "CA"].includes(p.papel) || tem(p, tipo))).sort((a, b) => (tem(b, tipo) - tem(a, tipo)) || forcaAtual(b) - forcaAtual(a))[0] || ativos(t).filter(p => p.papel !== "GOL")[0];
 function nota(p, d) { if (p) p.nota = lim(p.nota + d, 2, 10); }
 function proximoLance() {
   if (!J || J.fim) return;
@@ -669,9 +697,9 @@ function proximoLance() {
   const podeChutar = (pb > .7 || (tem(d, "lon") && pb > .6)) && centro < 22, cruzar = pb > .62 && centro > 17;
   const r = rnd();
   let acao = "passe";
-  if (podeChutar && r < (pb > .85 ? .12 : .05) * of * (t.jogada === "meio" ? 1.2 : t.jogada === "lados" ? .85 : 1) * (tem(d, "lon") && pb <= .85 ? 1.5 : 1) * (tem(d, "fin") ? 1.1 : 1)) acao = "chute";
-  else if (cruzar && r < (t.jogada === "lados" ? .34 : t.jogada === "meio" ? .1 : .2) * (tem(d, "cru") ? 1.5 : 1)) acao = "cruz";
-  else if (r < .2 + (d.papel === "PE" || d.papel === "PD" ? .12 : 0) + (tem(d, "dri") ? .06 : 0)) acao = "drible";
+  if (podeChutar && r < (pb > .85 ? .12 : .05) * of * (t.jogada === "meio" ? 1.2 : t.jogada === "lados" ? .85 : 1) * (tem(d, "lon") && pb <= .85 ? 1.5 : 1) * ((1 + (1.1 - 1) * hab(d, "fin")))) acao = "chute";
+  else if (cruzar && r < (t.jogada === "lados" ? .34 : t.jogada === "meio" ? .1 : .2) * ((1 + (1.5 - 1) * hab(d, "cru")))) acao = "cruz";
+  else if (r < .2 + (d.papel === "PE" || d.papel === "PD" ? .12 : 0) + (.06 * hab(d, "dri"))) acao = "drible";
 
   if (acao === "passe") {
     const cand = ativos(t).filter(p => p !== d && (p.papel !== "GOL" || pb < .25));
@@ -680,7 +708,7 @@ function proximoLance() {
       const lado = jg === "lados" ? (aberto(p) ? 1.9 : .6) : jg === "meio" ? (aberto(p) ? .55 : 1.6) : 1;
       return Math.max(.05, (av > 0 ? 1 + av * 4 * of : .6 + av * 2) * (dd < 35 ? 1 : .35) * lado); });
     const avanco = prog(t, alvo.x) - pb, dd = dist(alvo, d);
-    const chance = lim(.86 + (fa - fd) / 220 - Math.max(0, avanco) * .5 - dd / 260 + (tem(d, "pas") ? .06 : 0), .45, .97);
+    const chance = lim(.86 + (fa - fd) / 220 - Math.max(0, avanco) * .5 - dd / 260 + (.06 * hab(d, "pas")), .45, .97);
     t.st.passes++;
     dur = 3 + dd / 9;
     if (rnd() < chance) {
@@ -691,7 +719,7 @@ function proximoLance() {
     } else {
       // só perde a bola se houver um adversário no caminho do passe; senão a bola sai de campo
       nota(d, -.08);
-      const lane = ativos(o).filter(p => p.papel !== "GOL").map(p => { const c = noCorredor(p, d, alvo); return { p, ...c, d: c.d - (tem(p, "mar") ? 2.5 : 0) }; }).sort((a, b) => a.d - b.d)[0];
+      const lane = ativos(o).filter(p => p.papel !== "GOL").map(p => { const c = noCorredor(p, d, alvo); return { p, ...c, d: c.d - (2.5 * hab(p, "mar")) }; }).sort((a, b) => a.d - b.d)[0];
       if (lane && lane.d < marc(o).lane) {
         const rec = lane.p; nota(rec, .1); o.st.inter = (o.st.inter || 0) + 1;
         trocaPosse(o, rec, lane.pt);
@@ -709,12 +737,12 @@ function proximoLance() {
     if (rnd() < .25) texto = sorteia([`${d.nome} avança com a bola.`, `${d.nome} conduz pelo ${centro > 18 ? "lado" : "meio"}.`, `${d.nome} ganha espaço.`]);
   } else if (acao === "drible") {
     dur = 6;
-    const chance = lim(.5 + (fa - fd) / 120 + marc(o).tackle + (tem(d, "dri") ? .12 : 0) + (tem(d, "vel") ? .05 : 0) - (tem(defensor, "des") ? .1 : 0), .15, .9);
+    const chance = lim(.5 + (fa - fd) / 120 + marc(o).tackle + (.12 * hab(d, "dri")) + (.05 * hab(d, "vel")) - (.1 * hab(defensor, "des")), .15, .9);
     if (rnd() < chance) {
       nota(d, .1); nota(defensor, -.05);
       const nx = lim(J.bola.x + (t.lado === "casa" ? 1 : -1) * entre(7, 15), 3, L - 3), ny = lim(J.bola.y + entre(-8, 8), 3, A - 3);
       J.bola = { x: nx, y: ny }; texto = rnd() < .5 ? `${d.nome} passa por ${defensor?.nome || "um marcador"}!` : "";
-    } else if (rnd() < marc(o).falta + (tem(defensor, "ind") ? .12 : 0)) {
+    } else if (rnd() < marc(o).falta + (.12 * hab(defensor, "ind"))) {
       return falta(t, o, d, defensor);
     } else {
       nota(d, -.06); nota(defensor, .12); o.st.desarmes++;
@@ -723,9 +751,9 @@ function proximoLance() {
   } else if (acao === "cruz") {
     dur = 5;
     const area = ativos(t).filter(p => p !== d && SETOR[p.papel] >= 2 && prog(t, p.x) > .55);
-    const chance = lim(.3 + (fa - fd) / 250 + (tem(d, "cru") ? .12 : 0) - (tem(goleiro(o), "sai") ? .1 : 0), .12, .65);
+    const chance = lim(.3 + (fa - fd) / 250 + (.12 * hab(d, "cru")) - (tem(goleiro(o), "sai") ? .1 : 0), .12, .65);
     if (area.length && rnd() < chance) {
-      const cab = pesoSorteio(area, p => (p.papel === "CA" ? 3 : 1) * (tem(p, "cab") ? 2.5 : 1));
+      const cab = pesoSorteio(area, p => (p.papel === "CA" ? 3 : 1) * ((1 + (2.5 - 1) * hab(p, "cab"))));
       J.bola = { x: xDe(t, entre(.87, .93)), y: A / 2 + entre(-7, 7) }; J.dono = cab; nota(d, .05); J.passeDe = d;
       return fazerLance(dur, de, () => chute(t, o, cab, "cabeca"), `${d.nome} cruza na área...`);
     } else {
@@ -746,14 +774,18 @@ function falta(t, o, vit, fal) {
   let pb = prog(t, J.bola.x), centro = Math.abs(J.bola.y - A / 2), naArea = pb > (L - 16.5) / L && centro < 20;
   if (naArea && rnd() > .14) { naArea = false; J.bola = { x: xDe(t, entre(.78, .82)), y: J.bola.y }; pb = prog(t, J.bola.x); }   // quase sempre o contato é na entrada da área
   narrar("", minutoTxt() + (naArea ? `${fal.nome} derruba ${vit.nome} dentro da área!` : `Falta de ${fal.nome} em ${vit.nome}.`));
-  if (rnd() < (naArea ? .5 : marc(o).cartao) * (tem(fal, "ind") ? 1.6 : 1)) cartao(o, fal);
+  // capitão: com persuasão alta pressiona o juiz (mais cartão para o rival, menos para o próprio time); pode levar amarelo por reclamação
+  const capT = capitao(t), capO = capitao(o);
+  const pressao = (capT ? 1 + .6 * capT.pers / 100 : 1) * (capO ? 1 - .4 * capO.pers / 100 : 1);
+  if (rnd() < (naArea ? .5 : marc(o).cartao) * ((1 + (1.6 - 1) * hab(fal, "ind"))) * pressao) { if (capT && capT.pers > 70 && rnd() < .35) narrar("", `${minutoTxt()}🗣 O capitão ${capT.nome} cobra o juiz...`); cartao(o, fal); }
+  for (const [time, cap] of [[t, capT], [o, capO]]) if (cap && !cap.fora && cap.cartao < 2 && rnd() < .009 * (1.35 - cap.pers / 100)) { narrar("cartao", `${minutoTxt()}🗣 O capitão ${cap.nome} (${time.curto}) reclama demais com o juiz...`); cartao(time, cap); }
   bolaParada("falta");
   if (naArea) return penalti(t, o);
   const cob = cobrador(t, "fal"), de = { ...J.bola };
   J.posse = t; J.dono = cob; J.passeDe = null;
   if (pb > .66) {
     if (centro < 24 && rnd() < .55) return fazerLance(16, de, () => chute(t, o, cob, "falta"), `Falta perigosa para o ${t.curto}. ${cob.nome} ajeita a bola, a barreira se forma...`);
-    const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL"), cab = pesoSorteio(area, p => (p.papel === "ZAG" || p.papel === "CA" ? 3 : 1) * (tem(p, "cab") ? 2.5 : 1));
+    const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL"), cab = pesoSorteio(area, p => (p.papel === "ZAG" || p.papel === "CA" ? 3 : 1) * ((1 + (2.5 - 1) * hab(p, "cab"))));
     if (rnd() < .45) { J.bola = { x: xDe(t, .9), y: A / 2 + entre(-6, 6) }; J.dono = cab; J.passeDe = cob; return fazerLance(14, de, () => chute(t, o, cab, "cabeca"), `${cob.nome} cobra a falta levantando na área...`); }
     const zag = perto(o, { x: xDe(t, .9), y: A / 2 }); nota(zag, .06);
     trocaPosse(o, zag, { x: xDe(t, .82), y: A / 2 + entre(-12, 12) });
@@ -774,10 +806,10 @@ function chute(t, o, autor, tipo) {
   const fa = forcaAtual(autor), fg = forcaAtual(gk);
   t.st.chutes++;
   const bonus = (tem(autor, "fin") && tipo !== "falta" && tipo !== "penalti" ? 1 : 0), longe = tem(autor, "lon") && dGol > 18;
-  let noAlvo = rnd() < (tipo === "penalti" ? .9 + (tem(autor, "pen") ? .04 : 0) : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 + (tem(autor, "fal") ? .1 : 0) : 0) + bonus * .06 + (longe ? .08 : 0) + (tipo === "cabeca" && tem(autor, "cab") ? .08 : 0), .2, .8));
-  let pGol = tipo === "penalti" ? lim(.82 + (fa - fg) / 250 + (tem(autor, "pen") ? .06 : 0) - (tem(gk, "ppn") ? .12 : 0), .6, .94)
-    : lim(.38 - dGol * .012 + (fa - fg) / 160 + (tipo === "cabeca" ? -.06 + (tem(autor, "cab") ? .08 : 0) : 0) + (tipo === "falta" ? -.12 + (tem(autor, "fal") ? .12 : 0) : 0) + (tipo === "rebote" ? -.05 : 0)
-      + bonus * .07 + (longe ? dGol * .005 : 0) - (tem(gk, "ref") ? .07 : 0), .04, .65);
+  let noAlvo = rnd() < (tipo === "penalti" ? .9 + (.04 * hab(autor, "pen")) : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 + (.1 * hab(autor, "fal")) : 0) + bonus * .06 + (longe ? .08 : 0) + (tipo === "cabeca" && .08 * hab(autor, "cab")), .2, .8));
+  let pGol = tipo === "penalti" ? lim(.82 + (fa - fg) / 250 + (.06 * hab(autor, "pen")) - (.12 * hab(gk, "ppn")), .6, .94)
+    : lim(.38 - dGol * .012 + (fa - fg) / 160 + (tipo === "cabeca" ? -.06 + (.08 * hab(autor, "cab")) : 0) + (tipo === "falta" ? -.12 + (.12 * hab(autor, "fal")) : 0) + (tipo === "rebote" ? -.05 : 0)
+      + bonus * .07 + (longe ? dGol * .005 : 0) - (.07 * hab(gk, "ref")), .04, .65);
   if (J.roteiro) {                                          // replay: os gols acontecem exatamente como o servidor decidiu
     const g = J.roteiro.find(x => !x.feito && x.lado === t.lado && minuto() >= x.min);
     if (g) { g.feito = true; noAlvo = true; pGol = 1; } else pGol = 0;
@@ -823,10 +855,11 @@ function chute(t, o, autor, tipo) {
 function escanteio(t, o) {
   bolaParada("escanteio");
   J.bola = { x: xDe(t, 1) - (t.lado === "casa" ? .5 : -.5), y: sorteia([.5, A - .5]) };
-  const cob = ativos(t).filter(p => SETOR[p.papel] >= 2).sort((a, b) => b.forca - a.forca)[0] || J.dono;
+  const esquerdo = (t.lado === "casa") === (J.bola.y < A / 2);   // lado esquerdo de quem ataca
+  const cob = oficial(t, esquerdo ? "escE" : "escD") || ativos(t).filter(p => SETOR[p.papel] >= 2).sort((a, b) => b.forca - a.forca)[0] || J.dono;
   J.dono = cob; posicionar(); congelarPos();
   const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL");
-  const cab = pesoSorteio(area, p => (p.papel === "ZAG" || p.papel === "CA" ? 3 : 1) * (tem(p, "cab") ? 2.5 : 1));
+  const cab = pesoSorteio(area, p => (p.papel === "ZAG" || p.papel === "CA" ? 3 : 1) * ((1 + (2.5 - 1) * hab(p, "cab"))));
   if (rnd() < .4) { const de = { ...J.bola }; J.bola = { x: xDe(t, .9), y: A / 2 + entre(-6, 6) }; J.dono = cab; J.passeDe = cob; return fazerLance(6, de, () => chute(t, o, cab, "cabeca"), `Escanteio. ${cob.nome} levanta na área...`); }
   const zag = perto(o, { x: xDe(t, .92), y: A / 2 }); nota(zag, .06);
   const de = { ...J.bola }; trocaPosse(o, zag, { x: xDe(t, .85), y: A / 2 + entre(-10, 10) });
@@ -847,7 +880,7 @@ function fazerLance(dur, de, depois, texto = "", cls = "", bolaFim) {
   J.anim = { t0: performance.now(), dur, de: { ...de }, para: bolaFim ? { ...bolaFim } : { ...J.bola }, depois };
   // relógio, fôlego e posse avançam pelo tempo do lance
   J.posse.st.posse += dur;
-  for (const t of [J.casa, J.fora]) for (const p of ativos(t)) p.folego = lim(p.folego - dur / 60 * (0.55 + (p.idade > 31 ? .25 : 0) + (p.papel === "GOL" ? -.4 : 0) + (t.estilo === "of" ? .1 : 0) + marc(t).folego) * (tem(p, "res") ? .7 : tem(p, "fol") ? 1.35 : 1), 0, 100);
+  for (const t of [J.casa, J.fora]) for (const p of ativos(t)) p.folego = lim(p.folego - dur / 60 * (0.55 + (p.idade > 31 ? .25 : 0) + (p.papel === "GOL" ? -.4 : 0) + (t.estilo === "of" ? .1 : 0) + marc(t).folego) * (tem(p, "res") ? .7 : (1 + (1.35 - 1) * hab(p, "fol"))), 0, 100);
   J.seg += dur;
 }
 function minuto() { const m = Math.floor(J.seg / 60); return J.tempo === 1 ? Math.min(m, 45 + J.acrescimo[0]) : Math.min(m, 90 + J.acrescimo[1]); }
@@ -1167,8 +1200,13 @@ function desenharEscalacao() {
       <div class="nm">${esc(p.nome)}</div><div class="pp">${p.papel}${p.pos !== p.papel ? " (" + p.pos + ")" : ""}</div></div>`).join("");
   const lj = (p, tipo) => `<div class="lj ${tipo} ${p.saiu || p.fora ? "saiu" : ""}" data-jog="${p.id}"><b>${p.num}</b><span>${esc(p.nome)} ${carHtml(p.car)}${p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : ""}${p.saiu ? " (saiu)" : ""}${J && ESC_MODO === "jogo" && !p.saiu && tipo === "tit" ? ` <small class="dica">nota ${p.nota.toFixed(1)} · fôlego ${Math.round(p.folego)}%</small>` : ""}${ESC_MODO === "pre" && p.energiaIni != null ? ` <small class="dica">⚡${p.energiaIni}%</small> ${barraEnergia(p.energiaIni)}` : ""}</span><span class="pos">${p.pos}</span><span class="f">${p.forca}</span></div>`;
   $("esc-tit-l").innerHTML = t.jog.map(p => lj(p, "tit")).join("");
+  t.cob ||= cobPadrao(t); const tit = t.jog.filter(p => !p.fora);
+  $("esc-cobs").innerHTML = `<b class="dica" style="grid-column:1/-1">🎯 Cobradores oficiais e capitão</b>` + COBS.map(([k, rot]) => `<label class="dica">${k === "cap" ? "©" : "⚽"} ${rot}</label><select data-cob="${k}">${tit.filter(p => k === "cap" || p.papel !== "GOL").map(p => `<option ${t.cob[k] === p.nome ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>`).join("") +
+    `<span class="dica" style="grid-column:1/-1">O capitão conversa com o juiz: se tiver <b>persuasão</b> alta, ajuda o rival a levar cartão e o seu time a escapar; se tiver pouca, pode levar amarelo por reclamar.</span>`;
   $("esc-res-l").innerHTML = t.banco.map(p => lj(p, "res")).join("") + ((t.lesionados || []).length ? `<p class="dica" style="margin-top:8px">🚑 Contundidos (fora): ${t.lesionados.map(p => `${esc(p.nome)} (${p.lesao} jogo${p.lesao > 1 ? "s" : ""})`).join(", ")}</p>` : "") || "<p class='dica'>Sem reservas.</p>";
 }
+$("esc-cobs").addEventListener("change", e => { const sl = e.target.closest("[data-cob]"); if (!sl) return; const t = timeEsc(); (t.cob ||= {})[sl.dataset.cob] = sl.value;
+  if (J && ESC_MODO === "jogo") narrar("", `${minutoTxt()}📋 ${t.curto}: ${COBS.find(c => c[0] === sl.dataset.cob)[1].toLowerCase()} agora é com ${sl.value}.`); });
 function trocarNaEscalacao(a, b) {                        // a e b: jogadores (titular ou reserva) — troca de lugar
   const t = timeEsc(), ia = t.jog.indexOf(a), ib = t.jog.indexOf(b);
   if (a === b || a.saiu || b.saiu || a.fora || b.fora) return;
@@ -1622,7 +1660,7 @@ function forcaEscalada(id) {                              // força para simular
   if (!tec) return forcaTime(t);
   const xi = xiSimulado(id, tec).map(([papel, j]) => [{ papel }, j]);
   if (!xi.length) return 45;
-  return xi.reduce((a, [s, j]) => { const k = grauPos(s.papel, j[1], posAprendidas(j[0], j[1])); return a + j[2] * (0.86 + 0.14 * energia(id, j[0]) / 100) - (k === 0 ? 0 : k > 0 ? 3 : 9); }, 0) / xi.length - (11 - Math.min(11, xi.length)) * 3;
+  return xi.reduce((a, [s, j]) => { const k = grauPos(s.papel, j[1], posAprendidas(j[0], j[1])); return a + forcaSec(j[0], j[1], j[2], s.papel) * (0.86 + 0.14 * energia(id, j[0]) / 100) - (k === 0 ? 0 : k > 0 ? 3 : 9); }, 0) / xi.length - (11 - Math.min(11, xi.length)) * 3;
 }
 function fimDoJogoCarreira(fim) {
   VER_TABELAS = false;
@@ -1724,7 +1762,17 @@ const xpDe = (clube, nome) => C?.xp?.[clube]?.[nome] || 0;
 function ganharXP(tec, id, nome, ganho) {
   const t = timePorId(id), j = t.jogadores.find(x => x[0] === nome); if (!j || !(ganho > 0)) return;
   const fator = j[3] <= 21 ? 1.6 : j[3] <= 25 ? 1.25 : j[3] <= 29 ? 1 : j[3] <= 32 ? .7 : .45;
-  const c = ((C.xp ||= {})[id] ||= {}); c[nome] = (c[nome] || 0) + Math.max(1, ganho * fator);
+  let total = Math.max(1, ganho * fator);
+  // características ganham pontos junto: com 100 sobem de nível (até 5)
+  const cars = caracteristicas(nome, j[1], j[2]).filter(k => k !== "ind" && k !== "fol"), hb = ((C.hab ||= {})[nome + "|" + j[1]] ||= {});
+  for (const k of cars) { const h = (hb[k] ||= { n: nivelHab(nome, j[1], j[2], k), xp: 0 }); if (h.n >= 5) continue; h.xp += total * 1.4 / cars.length;
+    while (h.xp >= 100 && h.n < 5) { h.xp -= 100; h.n++; (C.avisosData[tec.nome] ||= []).push(`⭐ ${nome}: ${CAR[k][0]} subiu para o nível ${h.n}.`); } }
+  // com posição secundária, metade da experiência vai para ela
+  const secs = secundarias(nome, j[1]);
+  if (secs.length) { const parte = total / 2 / secs.length; total /= 2;
+    for (const x of secs) { if (x.f == null) x.f = Math.round(j[2] / 2); x.xp = (x.xp || 0) + parte;
+      while (x.xp >= 100 && x.f < j[2]) { x.xp -= 100; x.f = Math.min(j[2], x.f + 3); (C.avisosData[tec.nome] ||= []).push(`📈 ${nome} melhorou como ${x.p}: força ${x.f} nessa posição.`); } } }
+  const c = ((C.xp ||= {})[id] ||= {}); c[nome] = (c[nome] || 0) + total;
   while (c[nome] >= 100) {
     c[nome] -= 100;
     if (j[2] >= 95) { c[nome] = 99; break; }
@@ -1734,7 +1782,8 @@ function ganharXP(tec, id, nome, ganho) {
     const defeito = atuais.find(k => k === "ind" || k === "fol");
     if (defeito && r < .2) { a.sem.push(defeito); msgs.push(`✨ ${nome} corrigiu o defeito "${CAR[defeito][0]}".`); }
     else if (r < .42) { const op = (CAR_POS[j[1]] || []).filter(k => !atuais.includes(k)); if (op.length && atuais.filter(k => k !== "ind" && k !== "fol").length < 3) { const k = op[Math.floor(Math.random() * op.length)]; a.car.push(k); msgs.push(`✨ ${nome} aprendeu uma característica nova: ${CAR[k][0]}.`); } }
-    else if (r < .6) { const op = (PARECE[j[1]] || []).slice(1).filter(x => x !== "GOL" && !a.pos.includes(x)); if (op.length && a.pos.length < 2) { const x = op[0]; a.pos.push(x); msgs.push(`✨ ${nome} aprendeu a jogar também de ${x}.`); } }
+    else if (r < .6) { const tem2 = secundarias(nome, j[1]).map(x => x.p), op = (APRENDE[j[1]] || []).filter(x => !tem2.includes(x));
+      if (op.length && tem2.length < 2) { const x = op[Math.floor(Math.random() * op.length)], f2 = Math.round(j[2] / 2); a.pos.push({ p: x, f: f2, xp: 0 }); msgs.push(`✨ ${nome} aprendeu a jogar também de ${x} (começa com força ${f2} nessa posição e sobe com experiência).`); } }
     for (const m of msgs) (C.avisosData[tec.nome] ||= []).push(m);
   }
 }
@@ -1773,11 +1822,12 @@ function mensagem(tec, txt) {
   tec.msgs = tec.msgs.slice(0, 80);
 }
 const rotuloData = () => { const ev = C.agenda?.[Math.max(0, (C.data || 1) - 1)]; return ev?.t === "L" ? `rodada ${C.rodada}` : ev ? { EST: "estadual", CB: "Copa do Brasil", REG: "regional", LIB: "Libertadores", MUN: "Mundial" }[ev.t] || "" : "pré-temporada"; };
-function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, marcacao: t.marcacao, jogada: t.jogada, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
+function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, marcacao: t.marcacao, jogada: t.jogada, cob: t.cob, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
 function aplicarTatica(t, tat) {                         // repete a escalação da última partida (quem ainda estiver no elenco)
   const todos = [...t.jog, ...t.banco], novo = [];
   for (const s of tat.jog) { const p = todos.find(x => s.nome ? x.nome === s.nome : x.id === s.id); if (p && !novo.includes(p)) { Object.assign(p, { papel: s.papel, bx: s.bx, by: s.by }); novo.push(p); } }
   if (novo.length !== 11) return;
+  if (tat.cob) t.cob = { ...cobPadrao({ jog: novo }), ...tat.cob };
   t.jog = novo; t.banco = todos.filter(p => !novo.includes(p)); t.formacao = tat.formacao; t.estilo = tat.estilo; t.marcacao = tat.marcacao || "normal"; t.jogada = tat.jogada || "misto";
 }
 $("c-salvar").onclick = () => { salvar(); $("c-salvar").textContent = "✅ Salvo"; setTimeout(() => $("c-salvar").textContent = "💾 Salvar", 1500); };
@@ -2773,8 +2823,9 @@ function desenharPlantel() {
   const craques = new Set(t.jogadores.slice().sort((a, b) => b[2] - a[2]).slice(0, 3).map(x => x[0]));
   const sel = jog.find(x => x[0] === PL_SEL), ss = sel ? stDe(id, sel[0]) : null, nm = (n, j) => j ? (n / j).toFixed(2) : "--";
   const card = sel ? `<div class="pl-card"><div style="display:flex;justify-content:space-between"><b>${esc(sel[0])}</b><b>F:${sel[2]}</b></div>
-      <div class="dica">${sel[1]}${posAprendidas(sel[0], sel[1]).length ? ` (também joga de ${posAprendidas(sel[0], sel[1]).join(", ")})` : ""} · pé ${peDe(sel[0]) === "D" ? "direito" : "esquerdo"} · ${sel[3]} anos</div>
-      <div class="dica" style="margin-top:4px">Experiência ${Math.round(xpDe(id, sel[0]))}/100 <span style="display:inline-block;width:110px;height:10px;background:#222;border-radius:4px;overflow:hidden;vertical-align:middle"><i style="display:block;height:100%;width:${Math.round(xpDe(id, sel[0]))}%;background:#6aa9ff"></i></span></div><div style="margin:4px 0">${carJog(sel)}</div>
+      <div class="dica">${sel[1]}${secundarias(sel[0], sel[1]).length ? ` (também joga de ${secundarias(sel[0], sel[1]).map(x => `${x.p} com força ${forcaSec(sel[0], sel[1], sel[2], x.p)}`).join(", ")})` : ""} · pé ${peDe(sel[0]) === "D" ? "direito" : "esquerdo"} · ${sel[3]} anos</div>
+      <div class="dica" style="margin-top:4px">Experiência ${Math.round(xpDe(id, sel[0]))}/100 <span style="display:inline-block;width:110px;height:10px;background:#222;border-radius:4px;overflow:hidden;vertical-align:middle"><i style="display:block;height:100%;width:${Math.round(xpDe(id, sel[0]))}%;background:#6aa9ff"></i></span></div><div style="margin:4px 0">${caracteristicas(sel[0], sel[1], sel[2]).map(k => `<span class="car ${k === "ind" || k === "fol" ? "neg" : ""}" title="${CAR[k][1]}">${CAR[k][0]}${k === "ind" || k === "fol" ? "" : " " + "★".repeat(nivelHab(sel[0], sel[1], sel[2], k)) + "☆".repeat(5 - nivelHab(sel[0], sel[1], sel[2], k))}</span>`).join("")}</div>
+      <div class="dica">🗣 Persuasão: ${persuasao(sel[0])} <span title="Só vale se ele for o capitão">(vale como capitão)</span></div>
       <div class="dica">Valor ${dinheiro(valorJog(sel))} · salário ${dinheiro(salarioJog(sel))}/rodada · ${lesao(id, sel[0]) ? `🚑 fora por ${lesao(id, sel[0])} jogo(s)` : `energia ${energia(id, sel[0])}%`}</div>
       <table class="tab" style="margin-top:6px"><thead><tr><th></th><th>Temporada</th><th>Carreira</th></tr></thead><tbody>
       <tr><td>Jogos</td><td>${ss.tj}</td><td>${ss.cj}</td></tr><tr><td>Gols</td><td>${ss.tg}</td><td>${ss.cg}</td></tr><tr><td>Assistências</td><td>${ss.ta}</td><td>${ss.ca}</td></tr><tr><td>Nota média</td><td>${nm(ss.tn, ss.tj)}</td><td>${nm(ss.cn, ss.cj)}</td></tr></tbody></table>
