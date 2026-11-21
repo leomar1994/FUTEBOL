@@ -47,6 +47,8 @@
   td.n { font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; width: 44px; border-radius: 6px; }
   tr.mal td.n { background: #5a1f1f; color: #ffd6d6; }
   tr.mal .aviso { color: var(--verm); font-size: 12px; }
+  .car { display: inline-block; font-size: 10.5px; line-height: 1.3; padding: 0 5px; margin: 1px 2px 1px 0; border-radius: 6px; background: #1f3b2a; color: #9fe8b6; border: 1px solid #2f5d40; white-space: nowrap; vertical-align: middle; }
+  .car.neg { background: #3b1f1f; color: #ffb3b3; border-color: #5d2f2f; }
   tr.alerta td.n { background: #4a3d12; color: #ffe9a8; } tr.alerta .aviso { color: var(--amar); font-size: 12px; }
   tr.fora td { opacity: .45; }
   .folego { width: 54px; height: 6px; background: #2a352e; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
@@ -213,7 +215,7 @@
   <section id="elenco" class="tela">
     <button class="voltar" data-tela="carreira">↩ Temporada</button>
     <div class="caixa"><h2 id="el-tit">👥 Elenco</h2><div class="dica" id="el-info"></div>
-      <div style="overflow-x:auto"><table><thead><tr><th>Jogador</th><th>Pos</th><th>Idade</th><th>Força</th><th>Valor</th><th>Salário/rodada</th><th></th></tr></thead><tbody id="el-lista"></tbody></table></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Jogador</th><th>Pos</th><th>Idade</th><th>Força</th><th>Valor</th><th>Salário/rodada</th><th></th></tr></thead><tbody id="el-lista"></tbody></table></div><div class="legenda-car"></div>
       <p class="dica">"À venda": outros clubes podem fazer propostas a cada rodada. "Vender já": vende na hora por 70% do valor. O elenco precisa ter entre 16 e 35 jogadores.</p></div>
   </section>
 
@@ -225,8 +227,9 @@
         <label class="dica">Posição<select id="mc-pos"><option value="">Todas</option></select></label>
         <label class="dica">Divisão<select id="mc-div"><option value="">Todas</option></select></label>
         <label class="dica">Preço máximo (R$ mi)<input type="text" id="mc-max" inputmode="decimal" placeholder="sem limite"></label>
-        <label class="dica">Força mínima<input type="text" id="mc-fmin" inputmode="numeric" placeholder="0"></label></div>
-      <div style="overflow-x:auto"><table><thead><tr><th>Jogador</th><th>Pos</th><th>Idade</th><th>Força</th><th>Clube</th><th>Valor</th><th></th></tr></thead><tbody id="mc-lista"></tbody></table></div>
+        <label class="dica">Força mínima<input type="text" id="mc-fmin" inputmode="numeric" placeholder="0"></label>
+        <label class="dica">Característica<select id="mc-car"><option value="">Qualquer</option></select></label></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Jogador</th><th>Pos</th><th>Idade</th><th>Força</th><th>Clube</th><th>Valor</th><th></th></tr></thead><tbody id="mc-lista"></tbody></table></div><div class="legenda-car"></div>
       <p class="dica" id="mc-rodape"></p></div>
   </section>
   <div class="modal" id="m-prop"><div class="janela" style="max-width:440px">
@@ -276,11 +279,11 @@
             <div class="ft"><label>Jogadas</label><select id="on-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></div>
             <p><button class="prim" id="on-tatica">💾 Salvar tática</button> <span class="dica" id="on-msg-tat"></span></p></div>
           <div class="caixa" style="margin-top:12px" id="el-on-box"><h2>👥 Elenco e contratos</h2>
-            <p class="dica" id="el-on-info"></p><div style="overflow-x:auto"><table class="tab"><thead><tr><th>Pos</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Salário/rodada</th><th>Contrato</th><th></th></tr></thead><tbody id="el-on-lista"></tbody></table></div></div>
+            <p class="dica" id="el-on-info"></p><div style="overflow-x:auto"><table class="tab"><thead><tr><th>Pos</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Salário/rodada</th><th>Contrato</th><th></th></tr></thead><tbody id="el-on-lista"></tbody></table></div><div class="legenda-car"></div></div>
           <div class="caixa" style="margin-top:12px" id="lei-box"><h2>🔨 Leilão</h2>
             <p class="dica">Cada lance custa <b>1 token</b> e reinicia o cronômetro (12 h). Quem der o último lance quando o tempo acabar leva o jogador e passa a pagar o salário dele. Quem colocou o jogador no leilão recebe 50% dos tokens gastos. Tokens: vitória na liga dá 2, empate dá 1.</p>
             <div class="ft"><label>Posição</label><select id="lei-pos"><option value="">Todas</option></select></div>
-            <div class="res-l" id="lei-lista"></div></div>
+            <div class="res-l" id="lei-lista"></div><div class="legenda-car"></div></div>
           <div class="caixa" style="margin-top:12px" id="am-box"><h2>🤝 Amistosos</h2>
             <p class="dica">Para jogar em outro horário. Amistoso não vale nada: não conta na tabela, não dá tokens e não mexe com a diretoria.</p>
             <div id="am-form">
@@ -441,6 +444,33 @@ const L = 105, A = 68;   // campo em metros
 const MS_POR_SEG = 150;  // 1x: cada segundo de jogo leva 150 ms (partida de ~13 min); 2x, 4x e 8x dividem isso
 
 /* ===================== montagem dos times ===================== */
+/* ===================== características dos jogadores (como no Brasfoot, mas do nosso jeito) =====================
+   Cada jogador tem até 2 qualidades (os melhores têm mais) e às vezes 1 defeito. Saem sempre iguais para o mesmo
+   jogador (nome + posição), então valem em todo lugar: carreira, liga online, replays. */
+const CAR = {
+  fin: ["Finalização", "chuta melhor e acerta mais o gol"], cab: ["Cabeceio", "ganha mais bolas pelo alto e cabeceia melhor"], dri: ["Drible", "dribla mais e passa mais vezes pelo marcador"],
+  pas: ["Passe", "erra menos passes e acha mais o passe em profundidade"], vel: ["Velocidade", "conduz mais longe e ganha na corrida"], cru: ["Cruzamento", "cruza mais e com mais precisão"],
+  lon: ["Chute de longe", "arrisca e acerta de fora da área"], fal: ["Cobrança de falta", "bate as faltas do time e marca mais delas"], pen: ["Pênalti", "bate os pênaltis do time com mais precisão"],
+  des: ["Desarme", "rouba mais bolas nas divididas"], mar: ["Marcação", "corta mais passes"], ref: ["Reflexo", "goleiro: faz mais defesas"], ppn: ["Pega pênalti", "goleiro: defende mais pênaltis"],
+  sai: ["Saída do gol", "goleiro: corta mais cruzamentos"], res: ["Resistência", "cansa menos"],
+  ind: ["Indisciplinado", "faz mais faltas e leva mais cartões"], fol: ["Pouco fôlego", "cansa mais rápido"]
+};
+const CAR_POS = { GOL: ["ref", "ppn", "sai"], ZAG: ["des", "mar", "cab", "res"], LD: ["vel", "cru", "des", "res"], LE: ["vel", "cru", "des", "res"], VOL: ["des", "mar", "pas", "res", "lon"],
+  MC: ["pas", "lon", "res", "dri", "fal"], MEI: ["pas", "dri", "lon", "fal", "fin"], PE: ["dri", "vel", "cru", "fin", "fal"], PD: ["dri", "vel", "cru", "fin", "fal"], CA: ["fin", "cab", "pen", "vel", "dri"] };
+const CAR_CACHE = new Map();
+function caracteristicas(nome, pos, forca) {
+  const chave = nome + "|" + pos; if (CAR_CACHE.has(chave)) return CAR_CACHE.get(chave);
+  const r = semente("car" + chave), op = [...(CAR_POS[pos] || ["res"])], out = [];
+  const n = forca >= 78 ? 2 : forca >= 68 ? (r() < .6 ? 2 : 1) : forca >= 58 ? (r() < .55 ? 1 : 0) : (r() < .3 ? 1 : 0);
+  for (let i = 0; i < n && op.length; i++) out.push(op.splice(Math.floor(r() * op.length), 1)[0]);
+  if (r() < .12) out.push(r() < .55 ? "ind" : "fol");
+  CAR_CACHE.set(chave, out); return out;
+}
+const tem = (p, k) => !!p?.car?.includes(k);
+const carHtml = l => (l || []).map(k => `<span class="car ${k === "ind" || k === "fol" ? "neg" : ""}" title="${CAR[k][1]}">${CAR[k][0]}</span>`).join("");
+const carJog = j => carHtml(caracteristicas(j[0], j[1], j[2]));            // jogador no formato [nome, pos, força, idade]
+const LEGENDA_CAR = `<details class="dica"><summary>O que significam as características?</summary>${Object.values(CAR).map(([n, d]) => `<div><b>${n}</b>: ${d}</div>`).join("")}</details>`;
+
 function montarTime(base, formacao, estilo, lado) {
   const pool = base.jogadores.map(([nome, pos, forca, idade], i) => ({ id: base.id + i, nome, pos, forca, idade, num: 0 }));
   const slots = FORMACOES[formacao], titulares = [];
@@ -455,7 +485,7 @@ function montarTime(base, formacao, estilo, lado) {
   }
   const reservas = pool.filter(p => !usados.has(p.id));
   let n = 1; [...titulares, ...reservas].forEach(p => { p.num = n++; });
-  const ent = (p, slot) => ({ ...p, papel: slot ? slot[0] : p.pos, bx: slot ? slot[1] : 0, by: slot ? slot[2] : 0, nota: 6.0, folego: 100, gols: 0, assist: 0, cartao: 0, fora: false, saiu: false, entrou: false, toques: 0, x: 0, y: 0, px: 0, py: 0 });
+  const ent = (p, slot) => ({ ...p, car: caracteristicas(p.nome, p.pos, p.forca), papel: slot ? slot[0] : p.pos, bx: slot ? slot[1] : 0, by: slot ? slot[2] : 0, nota: 6.0, folego: 100, gols: 0, assist: 0, cartao: 0, fora: false, saiu: false, entrou: false, toques: 0, x: 0, y: 0, px: 0, py: 0 });
   return { base, nome: base.nome, curto: base.curto, cor: base.cor, cor2: base.cor2, lado, formacao, estilo, marcacao: "normal", jogada: "misto",
     jog: titulares.map((p, i) => ent(p, slots[i])), banco: reservas.map(p => ent(p, null)), subs: 0, janelas: 0, gols: 0,
     st: { posse: 0, chutes: 0, alvo: 0, esc: 0, faltas: 0, amarelos: 0, vermelhos: 0, passes: 0, passesCertos: 0, desarmes: 0, defesas: 0 } };
@@ -539,7 +569,7 @@ function noCorredor(p, a, b) {                            // distância de p at�
   const vx = b.x - a.x, vy = b.y - a.y, k = lim(((p.x - a.x) * vx + (p.y - a.y) * vy) / (vx * vx + vy * vy || 1), 0, 1), pt = { x: a.x + vx * k, y: a.y + vy * k };
   return { d: dist(p, pt), pt };
 }
-const cobrador = t => ativos(t).filter(p => ["MEI", "PE", "PD", "MC", "CA"].includes(p.papel)).sort((a, b) => forcaAtual(b) - forcaAtual(a))[0] || ativos(t).filter(p => p.papel !== "GOL")[0];
+const cobrador = (t, tipo) => ativos(t).filter(p => p.papel !== "GOL" && (["MEI", "PE", "PD", "MC", "CA"].includes(p.papel) || tem(p, tipo))).sort((a, b) => (tem(b, tipo) - tem(a, tipo)) || forcaAtual(b) - forcaAtual(a))[0] || ativos(t).filter(p => p.papel !== "GOL")[0];
 function nota(p, d) { if (p) p.nota = lim(p.nota + d, 2, 10); }
 function proximoLance() {
   if (!J || J.fim) return;
@@ -561,12 +591,12 @@ function proximoLance() {
   let dur = 5, de = { x: J.bola.x, y: J.bola.y }, texto = "", cls = "";
   d.toques++;
   // escolhe a ação
-  const podeChutar = pb > .7 && centro < 22, cruzar = pb > .62 && centro > 17;
+  const podeChutar = (pb > .7 || (tem(d, "lon") && pb > .6)) && centro < 22, cruzar = pb > .62 && centro > 17;
   const r = rnd();
   let acao = "passe";
-  if (podeChutar && r < (pb > .85 ? .12 : .05) * of * (t.jogada === "meio" ? 1.2 : t.jogada === "lados" ? .85 : 1)) acao = "chute";
-  else if (cruzar && r < (t.jogada === "lados" ? .34 : t.jogada === "meio" ? .1 : .2)) acao = "cruz";
-  else if (r < .2 + (d.papel === "PE" || d.papel === "PD" ? .12 : 0)) acao = "drible";
+  if (podeChutar && r < (pb > .85 ? .12 : .05) * of * (t.jogada === "meio" ? 1.2 : t.jogada === "lados" ? .85 : 1) * (tem(d, "lon") && pb <= .85 ? 1.5 : 1) * (tem(d, "fin") ? 1.1 : 1)) acao = "chute";
+  else if (cruzar && r < (t.jogada === "lados" ? .34 : t.jogada === "meio" ? .1 : .2) * (tem(d, "cru") ? 1.5 : 1)) acao = "cruz";
+  else if (r < .2 + (d.papel === "PE" || d.papel === "PD" ? .12 : 0) + (tem(d, "dri") ? .06 : 0)) acao = "drible";
 
   if (acao === "passe") {
     const cand = ativos(t).filter(p => p !== d && (p.papel !== "GOL" || pb < .25));
@@ -575,7 +605,7 @@ function proximoLance() {
       const lado = jg === "lados" ? (aberto(p) ? 1.9 : .6) : jg === "meio" ? (aberto(p) ? .55 : 1.6) : 1;
       return Math.max(.05, (av > 0 ? 1 + av * 4 * of : .6 + av * 2) * (dd < 35 ? 1 : .35) * lado); });
     const avanco = prog(t, alvo.x) - pb, dd = dist(alvo, d);
-    const chance = lim(.86 + (fa - fd) / 220 - Math.max(0, avanco) * .5 - dd / 260, .45, .97);
+    const chance = lim(.86 + (fa - fd) / 220 - Math.max(0, avanco) * .5 - dd / 260 + (tem(d, "pas") ? .06 : 0), .45, .97);
     t.st.passes++;
     dur = 3 + dd / 9;
     if (rnd() < chance) {
@@ -586,7 +616,7 @@ function proximoLance() {
     } else {
       // só perde a bola se houver um adversário no caminho do passe; senão a bola sai de campo
       nota(d, -.08);
-      const lane = ativos(o).filter(p => p.papel !== "GOL").map(p => ({ p, ...noCorredor(p, d, alvo) })).sort((a, b) => a.d - b.d)[0];
+      const lane = ativos(o).filter(p => p.papel !== "GOL").map(p => { const c = noCorredor(p, d, alvo); return { p, ...c, d: c.d - (tem(p, "mar") ? 2.5 : 0) }; }).sort((a, b) => a.d - b.d)[0];
       if (lane && lane.d < marc(o).lane) {
         const rec = lane.p; nota(rec, .1); o.st.inter = (o.st.inter || 0) + 1;
         trocaPosse(o, rec, lane.pt);
@@ -600,16 +630,16 @@ function proximoLance() {
     }
   } else if (acao === "drible" && (!defensor || dist(defensor, d) > 11)) {   // ninguém perto: avança conduzindo
     dur = 5;
-    J.bola = { x: lim(J.bola.x + (t.lado === "casa" ? 1 : -1) * entre(3, 7), 3, L - 3), y: lim(J.bola.y + entre(-5, 5), 3, A - 3) };
+    J.bola = { x: lim(J.bola.x + (t.lado === "casa" ? 1 : -1) * (tem(d, "vel") ? entre(6, 11) : entre(3, 7)), 3, L - 3), y: lim(J.bola.y + entre(-5, 5), 3, A - 3) };
     if (rnd() < .25) texto = sorteia([`${d.nome} avança com a bola.`, `${d.nome} conduz pelo ${centro > 18 ? "lado" : "meio"}.`, `${d.nome} ganha espaço.`]);
   } else if (acao === "drible") {
     dur = 6;
-    const chance = lim(.5 + (fa - fd) / 120 + marc(o).tackle, .2, .85);
+    const chance = lim(.5 + (fa - fd) / 120 + marc(o).tackle + (tem(d, "dri") ? .12 : 0) + (tem(d, "vel") ? .05 : 0) - (tem(defensor, "des") ? .1 : 0), .15, .9);
     if (rnd() < chance) {
       nota(d, .1); nota(defensor, -.05);
       const nx = lim(J.bola.x + (t.lado === "casa" ? 1 : -1) * entre(7, 15), 3, L - 3), ny = lim(J.bola.y + entre(-8, 8), 3, A - 3);
       J.bola = { x: nx, y: ny }; texto = rnd() < .5 ? `${d.nome} passa por ${defensor?.nome || "um marcador"}!` : "";
-    } else if (rnd() < marc(o).falta) {
+    } else if (rnd() < marc(o).falta + (tem(defensor, "ind") ? .12 : 0)) {
       return falta(t, o, d, defensor);
     } else {
       nota(d, -.06); nota(defensor, .12); o.st.desarmes++;
@@ -618,12 +648,14 @@ function proximoLance() {
   } else if (acao === "cruz") {
     dur = 5;
     const area = ativos(t).filter(p => p !== d && SETOR[p.papel] >= 2 && prog(t, p.x) > .55);
-    const chance = lim(.3 + (fa - fd) / 250, .15, .55);
+    const chance = lim(.3 + (fa - fd) / 250 + (tem(d, "cru") ? .12 : 0) - (tem(goleiro(o), "sai") ? .1 : 0), .12, .65);
     if (area.length && rnd() < chance) {
-      const cab = pesoSorteio(area, p => p.papel === "CA" ? 3 : 1);
+      const cab = pesoSorteio(area, p => (p.papel === "CA" ? 3 : 1) * (tem(p, "cab") ? 2.5 : 1));
       J.bola = { x: xDe(t, entre(.87, .93)), y: A / 2 + entre(-7, 7) }; J.dono = cab; nota(d, .05); J.passeDe = d;
       return fazerLance(dur, de, () => chute(t, o, cab, "cabeca"), `${d.nome} cruza na área...`);
     } else {
+      const gkS = goleiro(o);
+      if (tem(gkS, "sai") && rnd() < .4) { nota(gkS, .1); trocaPosse(o, gkS, { x: xDe(o, .06), y: A / 2 }); return fazerLance(dur, de, null, `${d.nome} cruza e ${gkS.nome} sai do gol para ficar com a bola.`); }
       const zag = perto(o, { x: xDe(t, .9), y: A / 2 }); nota(zag, .08); nota(d, -.03);
       if (rnd() < .35) { t.st.esc++; texto = `${zag.nome} afasta: escanteio para o ${t.curto}.`; return fazerLance(dur, de, () => escanteio(t, o), texto); }
       trocaPosse(o, zag, { x: xDe(t, .82), y: A / 2 + entre(-12, 12) }); texto = `${zag.nome} corta o cruzamento.`;
@@ -637,15 +669,15 @@ function proximoLance() {
 function falta(t, o, vit, fal) {
   o.st.faltas++; nota(fal, -.06);
   let pb = prog(t, J.bola.x), centro = Math.abs(J.bola.y - A / 2), naArea = pb > (L - 16.5) / L && centro < 20;
-  if (naArea && rnd() > .22) { naArea = false; J.bola = { x: xDe(t, entre(.78, .82)), y: J.bola.y }; pb = prog(t, J.bola.x); }   // quase sempre o contato é na entrada da área
+  if (naArea && rnd() > .14) { naArea = false; J.bola = { x: xDe(t, entre(.78, .82)), y: J.bola.y }; pb = prog(t, J.bola.x); }   // quase sempre o contato é na entrada da área
   narrar("", minutoTxt() + (naArea ? `${fal.nome} derruba ${vit.nome} dentro da área!` : `Falta de ${fal.nome} em ${vit.nome}.`));
-  if (rnd() < (naArea ? .5 : marc(o).cartao)) cartao(o, fal);
+  if (rnd() < (naArea ? .5 : marc(o).cartao) * (tem(fal, "ind") ? 1.6 : 1)) cartao(o, fal);
   if (naArea) return penalti(t, o);
-  const cob = cobrador(t), de = { ...J.bola };
+  const cob = cobrador(t, "fal"), de = { ...J.bola };
   J.posse = t; J.dono = cob; J.passeDe = null;
   if (pb > .66) {
     if (centro < 24 && rnd() < .55) return fazerLance(16, de, () => chute(t, o, cob, "falta"), `Falta perigosa para o ${t.curto}. ${cob.nome} ajeita a bola, a barreira se forma...`);
-    const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL"), cab = pesoSorteio(area, p => p.papel === "ZAG" || p.papel === "CA" ? 3 : 1);
+    const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL"), cab = pesoSorteio(area, p => (p.papel === "ZAG" || p.papel === "CA" ? 3 : 1) * (tem(p, "cab") ? 2.5 : 1));
     if (rnd() < .45) { J.bola = { x: xDe(t, .9), y: A / 2 + entre(-6, 6) }; J.dono = cab; J.passeDe = cob; return fazerLance(14, de, () => chute(t, o, cab, "cabeca"), `${cob.nome} cobra a falta levantando na área...`); }
     const zag = perto(o, { x: xDe(t, .9), y: A / 2 }); nota(zag, .06);
     trocaPosse(o, zag, { x: xDe(t, .82), y: A / 2 + entre(-12, 12) });
@@ -655,7 +687,7 @@ function falta(t, o, vit, fal) {
 }
 function penalti(t, o) {
   t.st.pen = (t.st.pen || 0) + 1;
-  const cob = cobrador(t), gk = goleiro(o), de = { ...J.bola };
+  const cob = cobrador(t, "pen"), gk = goleiro(o), de = { ...J.bola };
   J.posse = t; J.dono = cob; J.passeDe = null; J.bola = { x: xDe(t, (L - 11) / L), y: A / 2 };
   narrar("verm", `${minutoTxt()}🚨 PÊNALTI para o ${t.nome}!`);
   fazerLance(28, de, () => chute(t, o, cob, "penalti"), `${cob.nome} vai para a cobrança. ${gk.nome} no gol...`);
@@ -665,8 +697,11 @@ function chute(t, o, autor, tipo) {
   const gk = goleiro(o), dGol = Math.hypot(xDe(t, 1) - J.bola.x, J.bola.y - A / 2);
   const fa = forcaAtual(autor), fg = forcaAtual(gk);
   t.st.chutes++;
-  let noAlvo = rnd() < (tipo === "penalti" ? .9 : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 : 0), .2, .75));
-  let pGol = tipo === "penalti" ? lim(.82 + (fa - fg) / 250, .7, .92) : lim(.38 - dGol * .012 + (fa - fg) / 160 + (tipo === "cabeca" ? -.06 : 0) + (tipo === "falta" ? -.12 : 0) + (tipo === "rebote" ? -.05 : 0), .04, .6);
+  const bonus = (tem(autor, "fin") && tipo !== "falta" && tipo !== "penalti" ? 1 : 0), longe = tem(autor, "lon") && dGol > 18;
+  let noAlvo = rnd() < (tipo === "penalti" ? .9 + (tem(autor, "pen") ? .04 : 0) : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 + (tem(autor, "fal") ? .1 : 0) : 0) + bonus * .06 + (longe ? .08 : 0) + (tipo === "cabeca" && tem(autor, "cab") ? .08 : 0), .2, .8));
+  let pGol = tipo === "penalti" ? lim(.82 + (fa - fg) / 250 + (tem(autor, "pen") ? .06 : 0) - (tem(gk, "ppn") ? .12 : 0), .6, .94)
+    : lim(.38 - dGol * .012 + (fa - fg) / 160 + (tipo === "cabeca" ? -.06 + (tem(autor, "cab") ? .08 : 0) : 0) + (tipo === "falta" ? -.12 + (tem(autor, "fal") ? .12 : 0) : 0) + (tipo === "rebote" ? -.05 : 0)
+      + bonus * .07 + (longe ? dGol * .005 : 0) - (tem(gk, "ref") ? .07 : 0), .04, .65);
   if (J.roteiro) {                                          // replay: os gols acontecem exatamente como o servidor decidiu
     const g = J.roteiro.find(x => !x.feito && x.lado === t.lado && minuto() >= x.min);
     if (g) { g.feito = true; noAlvo = true; pGol = 1; } else pGol = 0;
@@ -714,7 +749,7 @@ function escanteio(t, o) {
   const cob = ativos(t).filter(p => SETOR[p.papel] >= 2).sort((a, b) => b.forca - a.forca)[0] || J.dono;
   J.dono = cob; posicionar(); congelarPos();
   const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL");
-  const cab = pesoSorteio(area, p => p.papel === "ZAG" || p.papel === "CA" ? 3 : 1);
+  const cab = pesoSorteio(area, p => (p.papel === "ZAG" || p.papel === "CA" ? 3 : 1) * (tem(p, "cab") ? 2.5 : 1));
   if (rnd() < .4) { const de = { ...J.bola }; J.bola = { x: xDe(t, .9), y: A / 2 + entre(-6, 6) }; J.dono = cab; J.passeDe = cob; return fazerLance(6, de, () => chute(t, o, cab, "cabeca"), `Escanteio. ${cob.nome} levanta na área...`); }
   const zag = perto(o, { x: xDe(t, .92), y: A / 2 }); nota(zag, .06);
   const de = { ...J.bola }; trocaPosse(o, zag, { x: xDe(t, .85), y: A / 2 + entre(-10, 10) });
@@ -735,7 +770,7 @@ function fazerLance(dur, de, depois, texto = "", cls = "", bolaFim) {
   J.anim = { t0: performance.now(), dur, de: { ...de }, para: bolaFim ? { ...bolaFim } : { ...J.bola }, depois };
   // relógio, fôlego e posse avançam pelo tempo do lance
   J.posse.st.posse += dur;
-  for (const t of [J.casa, J.fora]) for (const p of ativos(t)) p.folego = lim(p.folego - dur / 60 * (0.55 + (p.idade > 31 ? .25 : 0) + (p.papel === "GOL" ? -.4 : 0) + (t.estilo === "of" ? .1 : 0) + marc(t).folego), 0, 100);
+  for (const t of [J.casa, J.fora]) for (const p of ativos(t)) p.folego = lim(p.folego - dur / 60 * (0.55 + (p.idade > 31 ? .25 : 0) + (p.papel === "GOL" ? -.4 : 0) + (t.estilo === "of" ? .1 : 0) + marc(t).folego) * (tem(p, "res") ? .7 : tem(p, "fol") ? 1.35 : 1), 0, 100);
   J.seg += dur;
 }
 function minuto() { const m = Math.floor(J.seg / 60); return J.tempo === 1 ? Math.min(m, 45 + J.acrescimo[0]) : Math.min(m, 90 + J.acrescimo[1]); }
@@ -875,7 +910,7 @@ function atualizarTudo() {
   const linhas = [...t.jog, ...t.banco.filter(p => p.saiu)].map(p => {
     const mt = p.saiu ? null : motivoTroca(p), f = Math.round(p.folego), cor = f > 60 ? "var(--verde)" : f > 35 ? "var(--amar)" : "var(--verm)";
     const extra = (p.gols ? " ⚽".repeat(p.gols) : "") + (p.assist ? " 🅰" : "") + (p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : "") + (p.entrou ? " ⬆" : "") + (p.saiu ? " ⬇" : "");
-    return `<tr class="${mt ? mt.tipo : ""} ${p.fora ? "fora" : ""}"><td>${p.num}</td><td>${esc(p.nome)}${extra}${mt ? `<br><span class="aviso">${mt.txt}</span>` : ""}</td><td>${p.papel}</td>
+    return `<tr class="${mt ? mt.tipo : ""} ${p.fora ? "fora" : ""}"><td>${p.num}</td><td>${esc(p.nome)}${extra} ${carHtml(p.car)}${mt ? `<br><span class="aviso">${mt.txt}</span>` : ""}</td><td>${p.papel}</td>
       <td><span class="folego"><i style="width:${f}%;background:${cor}"></i></span></td><td class="n">${p.nota.toFixed(1)}</td>
       <td>${meu && !J.replay && !p.fora && !J.fim && J.meu.subs < 5 ? `<button data-sub="${p.id}" title="Substituir">⇄</button>` : ""}</td></tr>`;
   });
@@ -1006,7 +1041,7 @@ function desenharEscalacao() {
   pr.innerHTML = linhas + t.jog.map((p, i) => `<div class="dot ${p.fora ? "morto" : ""}" data-slot="${i}" style="left:${(p.by * 100).toFixed(1)}%;top:${((1 - p.bx) * 100).toFixed(1)}%;--anel:${corAdapt(p)}">
       <div class="c" style="background:${p.papel === "GOL" ? "#e9c46a" : t.cor};border-color:${t.cor2};color:${p.papel === "GOL" ? "#222" : t.cor2}">${p.num}</div>
       <div class="nm">${esc(p.nome)}</div><div class="pp">${p.papel}${p.pos !== p.papel ? " (" + p.pos + ")" : ""}</div></div>`).join("");
-  const lj = (p, tipo) => `<div class="lj ${tipo} ${p.saiu || p.fora ? "saiu" : ""}" data-jog="${p.id}"><b>${p.num}</b><span>${esc(p.nome)}${p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : ""}${p.saiu ? " (saiu)" : ""}${J && ESC_MODO === "jogo" && !p.saiu && tipo === "tit" ? ` <small class="dica">nota ${p.nota.toFixed(1)} · fôlego ${Math.round(p.folego)}%</small>` : ""}</span><span class="pos">${p.pos}</span><span class="f">${p.forca}</span></div>`;
+  const lj = (p, tipo) => `<div class="lj ${tipo} ${p.saiu || p.fora ? "saiu" : ""}" data-jog="${p.id}"><b>${p.num}</b><span>${esc(p.nome)} ${carHtml(p.car)}${p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : ""}${p.saiu ? " (saiu)" : ""}${J && ESC_MODO === "jogo" && !p.saiu && tipo === "tit" ? ` <small class="dica">nota ${p.nota.toFixed(1)} · fôlego ${Math.round(p.folego)}%</small>` : ""}</span><span class="pos">${p.pos}</span><span class="f">${p.forca}</span></div>`;
   $("esc-tit-l").innerHTML = t.jog.map(p => lj(p, "tit")).join("");
   $("esc-res-l").innerHTML = t.banco.map(p => lj(p, "res")).join("") || "<p class='dica'>Sem reservas.</p>";
 }
@@ -1816,7 +1851,7 @@ function abrirElenco() {
   $("el-tit").textContent = `👥 Elenco — ${t.nome}`;
   $("el-info").textContent = `Caixa ${dinheiro(f.caixa)} · ${t.jogadores.length} jogadores · folha por rodada ${dinheiro(folha(t))}`;
   $("el-lista").innerHTML = t.jogadores.slice().sort((a, b) => ordem.indexOf(a[1]) - ordem.indexOf(b[1]) || b[2] - a[2]).map(j => { const v = f.venda.includes(j[0]);
-    return `<tr><td>${esc(j[0])}${v ? " <span class='dica'>(à venda)</span>" : ""}</td><td>${j[1]}</td><td>${j[3]}</td><td><b>${j[2]}</b></td><td>${dinheiro(valorJog(j))}</td><td>${dinheiro(salarioJog(j))}</td>
+    return `<tr><td>${esc(j[0])}${v ? " <span class='dica'>(à venda)</span>" : ""}<br>${carJog(j)}</td><td>${j[1]}</td><td>${j[3]}</td><td><b>${j[2]}</b></td><td>${dinheiro(valorJog(j))}</td><td>${dinheiro(salarioJog(j))}</td>
       <td><button data-el-venda="${esc(j[0])}">${v ? "Tirar da venda" : "À venda"}</button> <button data-el-ja="${esc(j[0])}">Vender já</button></td></tr>`; }).join("");
   tela("elenco");
 }
@@ -1846,12 +1881,12 @@ function listarMercado() {
   $("mc-info").textContent = `Seu caixa: ${dinheiro(f.caixa)} · ${timePorId(tec.clube).jogadores.length}/35 jogadores`;
   const lista = [];
   for (const d of DIVS) { if (div && d !== div) continue; for (const id of C.ligas[d].ids) { if (id === tec.clube) continue; const t = timePorId(id);
-    for (const j of t.jogadores) if ((!pos || j[1] === pos) && j[2] >= fmin && valorJog(j) <= max && (!nome || norm(j[0]).includes(nome))) lista.push([j, id, d]); } }
+    for (const j of t.jogadores) if ((!$("mc-car").value || caracteristicas(j[0], j[1], j[2]).includes($("mc-car").value)) && (!pos || j[1] === pos) && j[2] >= fmin && valorJog(j) <= max && (!nome || norm(j[0]).includes(nome))) lista.push([j, id, d]); } }
   lista.sort((a, b) => b[0][2] - a[0][2]);
-  $("mc-lista").innerHTML = lista.slice(0, 80).map(([j, id, d]) => `<tr><td>${esc(j[0])}</td><td>${j[1]}</td><td>${j[3]}</td><td><b>${j[2]}</b></td><td>${escudo(timePorId(id))}${esc(nomeTime(id))} <span class="dica">${d}</span></td><td>${dinheiro(valorJog(j))}</td><td><button data-mc="${esc(id)}|${esc(j[0])}">Proposta</button></td></tr>`).join("") || "<tr><td colspan='7' class='dica'>Nenhum jogador com esses filtros.</td></tr>";
+  $("mc-lista").innerHTML = lista.slice(0, 80).map(([j, id, d]) => `<tr><td>${esc(j[0])}<br>${carJog(j)}</td><td>${j[1]}</td><td>${j[3]}</td><td><b>${j[2]}</b></td><td>${escudo(timePorId(id))}${esc(nomeTime(id))} <span class="dica">${d}</span></td><td>${dinheiro(valorJog(j))}</td><td><button data-mc="${esc(id)}|${esc(j[0])}">Proposta</button></td></tr>`).join("") || "<tr><td colspan='7' class='dica'>Nenhum jogador com esses filtros.</td></tr>";
   $("mc-rodape").textContent = lista.length > 80 ? `Mostrando os 80 mais fortes de ${lista.length}. Use os filtros para achar outros.` : `${lista.length} jogadores.`;
 }
-for (const id of ["mc-nome", "mc-pos", "mc-div", "mc-max", "mc-fmin"]) $(id).addEventListener("input", listarMercado);
+for (const id of ["mc-nome", "mc-pos", "mc-div", "mc-max", "mc-fmin", "mc-car"]) $(id).addEventListener("input", listarMercado);
 $("c-mercado").onclick = abrirMercado;
 let ALVO = null;
 $("mc-lista").onclick = e => {
@@ -2092,7 +2127,7 @@ function desenharElencoOn() {
   const folha = l.reduce((a, j) => a + Number(j.salario), 0), vencem = l.filter(j => j.contrato_ate <= temp).length;
   $("el-on-info").innerHTML = `${l.length} jogadores · folha ${dinheiro(folha)} por rodada · caixa ${dinheiro(Number(ON.clubes[eu.clube]?.caixa || 0))}${vencem ? ` · <span style="color:var(--verm)">${vencem} contrato(s) vencem no fim desta temporada e vão para o leilão se não renovar</span>` : ""}`;
   $("el-on-lista").innerHTML = l.slice().sort((a, b) => ordem.indexOf(a.pos) - ordem.indexOf(b.pos) || b.forca - a.forca).map(j => { const vence = j.contrato_ate <= temp;
-    return `<tr><td>${j.pos}</td><td>${esc(j.nome)}</td><td>${j.idade}</td><td><b>${j.forca}</b></td><td>${dinheiro(Number(j.salario))}</td><td style="${vence ? "color:var(--verm)" : ""}">até ${j.contrato_ate}${vence ? " ⚠" : ""}</td>
+    return `<tr><td>${j.pos}</td><td>${esc(j.nome)}<br>${carHtml(caracteristicas(j.nome, j.pos, j.forca))}</td><td>${j.idade}</td><td><b>${j.forca}</b></td><td>${dinheiro(Number(j.salario))}</td><td style="${vence ? "color:var(--verm)" : ""}">até ${j.contrato_ate}${vence ? " ⚠" : ""}</td>
       <td style="white-space:nowrap">${j.contrato_ate < temp + 2 ? `<button data-ren="${j.id}" style="padding:2px 8px">✍ Renovar</button> ` : ""}<button data-lei="${j.id}" style="padding:2px 8px">🔨 Leiloar</button></td></tr>`; }).join("");
 }
 const valorOn = (f, i) => Math.round(0.3 * Math.pow(1.13, f - 50) * (i <= 21 ? 1.4 : i <= 27 ? 1.2 : i <= 30 ? 1 : i <= 33 ? .6 : .3) * 100) / 100;
@@ -2111,7 +2146,7 @@ function desenharLeilao() {
   const resta = f => { const ms = new Date(f) - new Date(); if (ms <= 0) return "terminando…"; const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000); return h ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`; };
   $("lei-lista").innerHTML = (l.length ? `<p class="dica">${l.length} jogador(es) no leilão · você tem <b>🪙 ${eu.tokens ?? 0}</b> tokens</p>` : "<p class='dica'>Nenhum jogador no leilão agora. Contratos vencidos entram aqui no fim da temporada, e os técnicos podem leiloar jogadores do elenco.</p>") +
     l.map(x => { const j = x.j, meu = x.vendedor === eu.user_id, ultimoEu = x.ultimo === eu.user_id;
-      return `<div style="margin:6px 0"><b>${j.pos} · ${esc(j.nome)}</b> · ${j.idade} anos · força <b>${j.forca}</b> · salário ${dinheiro(Number(j.salario))}/rodada
+      return `<div style="margin:6px 0"><b>${j.pos} · ${esc(j.nome)}</b> ${carHtml(caracteristicas(j.nome, j.pos, j.forca))} · ${j.idade} anos · força <b>${j.forca}</b> · salário ${dinheiro(Number(j.salario))}/rodada
         <div class="dica">${x.motivo === "contrato" ? `contrato vencido (${esc(nomeOn(x.origem))})` : `colocado por ${esc(tecOn(x.vendedor)?.nome || "técnico")} (${esc(nomeOn(x.origem))})`} · ${x.lances} lance(s)${x.ultimo ? ` · último: <b>${esc(tecOn(x.ultimo)?.nome || "técnico")}</b>` : ""} · termina em <b>${resta(x.fim)}</b></div>
         ${eu.demitido ? "" : meu ? "<span class='dica'>Seu jogador</span>" : ultimoEu ? "<span class='dica' style='color:var(--verde)'>✔ O último lance é seu</span>" : `<button data-lance="${x.id}" ${(eu.tokens || 0) < 1 ? "disabled" : ""}>🔨 Dar lance (1 🪙)</button>`}</div>`; }).join("");
 }
@@ -2268,6 +2303,8 @@ async function assistirReplay(jogoId, obj) {
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-replay]"); if (b) assistirReplay(Number(b.dataset.replay)); });
 
+$("mc-car").innerHTML += Object.entries(CAR).filter(([k]) => k !== "ind" && k !== "fol").map(([k, [n]]) => `<option value="${k}">${n}</option>`).join("");
+document.querySelectorAll(".legenda-car").forEach(d => d.innerHTML = LEGENDA_CAR);
 tela("menu");
 
 </script>
