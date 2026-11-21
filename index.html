@@ -531,7 +531,7 @@ let TIMES = [
 ];
 
 /* Formações: posições-base no próprio campo (x: 0 = o seu gol, 1 = gol adversário; y: 0–1 de uma lateral à outra) */
-// cada posição das formações é um dos 24 lugares da grade da prancheta (ver LUGARES): o botão fica dentro do lugar
+// cada posição das formações é um dos 27 lugares da grade da prancheta (ver LUGARES): o botão fica dentro do lugar
 const FORMACOES = {
   "4-4-2":   [["GOL",.09,.5],["LD",.2,.9],["ZAG",.2,.7],["ZAG",.2,.3],["LE",.2,.1],["PD",.65,.9],["MC",.5,.7],["VOL",.35,.3],["PE",.65,.1],["CA",.8,.7],["CA",.8,.3]],
   "4-3-3":   [["GOL",.09,.5],["LD",.2,.9],["ZAG",.2,.7],["ZAG",.2,.3],["LE",.2,.1],["MC",.5,.7],["VOL",.35,.5],["MEI",.65,.3],["PD",.8,.9],["CA",.8,.5],["PE",.8,.1]],
@@ -1445,13 +1445,14 @@ requestAnimationFrame(desenhar);
 /* ===================== ESCALAÇÃO: prancheta com arrastar e soltar ===================== */
 let ESC_TIME = null, ESC_MODO = "pre";   // "pre" = antes da partida · "jogo" = durante (trocar com reserva conta como substituição)
 // lugares do campo (como uma grade): cada um tem o nome da posição; o botão solto num lugar vazio encaixa no mais perto
-// 24 lugares: goleiro + 5 linhas (zaga 5 · volantes/alas 5 · meio 3 · meias/pontas 5 · ataque 5), como numa grade
+// 27 lugares: goleiro + zaga 5 · volantes/alas 5 · meio 3 · meias/pontas 5 · ataque 5 · ataque adiantado 3
 const LUGARES = [[.09, .5, "GOL"],
   ...[[.1, "LE"], [.3, "ZAG"], [.5, "ZAG"], [.7, "ZAG"], [.9, "LD"]].map(([y, r]) => [.2, y, r]),
   ...[[.1, "LE"], [.3, "VOL"], [.5, "VOL"], [.7, "VOL"], [.9, "LD"]].map(([y, r]) => [.35, y, r]),
   ...[[.3, "MC"], [.5, "MC"], [.7, "MC"]].map(([y, r]) => [.5, y, r]),
   ...[[.1, "PE"], [.3, "MEI"], [.5, "MEI"], [.7, "MEI"], [.9, "PD"]].map(([y, r]) => [.65, y, r]),
-  ...[[.1, "PE"], [.3, "CA"], [.5, "CA"], [.7, "CA"], [.9, "PD"]].map(([y, r]) => [.8, y, r])];
+  ...[[.1, "PE"], [.3, "CA"], [.5, "CA"], [.7, "CA"], [.9, "PD"]].map(([y, r]) => [.8, y, r]),
+  ...[[.3, "CA"], [.5, "CA"], [.7, "CA"]].map(([y, r]) => [.92, y, r])];   // 3 lugares mais adiantados, para empurrar os atacantes
 const noLugar = (p, l) => Math.abs(p.bx - l[0]) < .03 && Math.abs(p.by - l[1]) < .04;
 function encaixarNaGrade(t) {                            // táticas antigas: cada botão vai para o lugar livre mais perto (de preferência o da mesma posição)
   const usados = new Set(), dist = (p, l) => Math.hypot(p.bx - l[0], (p.by - l[1]) * .65);
