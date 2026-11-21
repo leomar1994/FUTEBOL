@@ -438,7 +438,7 @@
       <button class="prim" id="ver-campo">📺 Ver partida ao vivo</button>
       <button id="abrir-esc">📋 Escalação e tática</button>
       <span class="sep"></span>
-      <button id="voz" title="Narração por voz: desligada · só os lances importantes · tudo">🔇 Voz</button>
+      <button id="voz" title="Narrador: gol, falta e lances importantes, com apito e torcida">🔇 Narrador</button>
       <button id="fim-rapido">⏭ Ir para o resultado</button>
       <button id="nova" hidden>↩ Nova partida</button>
     </div>
@@ -469,6 +469,7 @@
   <div id="narra"></div>
 </div></div>
 
+<div class="modal" id="m-voz"><div class="janela" style="max-width:620px"><h2>🎙 Narrador</h2><div id="voz-corpo"></div><p style="text-align:right"><button class="prim" id="voz-fechar">Pronto</button></p></div></div>
 <div class="modal" id="m-estadio"><div class="janela" style="max-width:560px"><h2>🏟 Estádio e torcida</h2><div id="est-info"></div>
   <div class="ft"><label>Preço do ingresso (R$)</label><input type="text" id="est-preco" inputmode="numeric" style="max-width:120px"> <button id="est-salvar-preco">Salvar preço</button></div>
   <p><button class="prim" id="est-ampliar"></button></p><p class="dica" id="est-msg"></p>
@@ -1720,45 +1721,125 @@ $("fechar-campo").onclick = () => $("m-campo").classList.remove("on");
 $("m-campo").onclick = e => { if (e.target.id === "m-campo") $("m-campo").classList.remove("on"); };
 $("tab-meu").onclick = () => { J.aba = "meu"; $("tab-meu").classList.add("on"); $("tab-adv").classList.remove("on"); atualizarTudo(); };
 $("tab-adv").onclick = () => { J.aba = "adv"; $("tab-adv").classList.add("on"); $("tab-meu").classList.remove("on"); atualizarTudo(); };
-/* ---------- NARRAÇÃO POR VOZ (voz do próprio navegador, em português; grátis e sem internet) ----------
-   Desligada · "Lances": gols, chances, defesas, cartões, impedimentos, contra-ataques e apitos · "Tudo": também os passes e dribles.
-   Em 4x só gols, cartões e apitos; em 8x só gols e apitos. "Ir para o resultado" e a pausa calam o narrador. */
+/* ---------- NARRADOR DE LANCES (como nos patches): só gol, falta, pênalti, cartão, defesa, trave, impedimento e apitos ----------
+   Frases curtas de narrador + sons de estádio (apito e torcida, gerados no próprio navegador).
+   "Minhas gravações": o técnico grava (ou escolhe) um áudio para cada lance e o jogo toca o áudio dele no lugar da voz do navegador. */
 const VOZ = window.VOZ = (() => {
-  const S = window.speechSynthesis, LS = "fut-voz", MODOS = ["off", "lances", "tudo"];
-  let modo = "off"; try { modo = MODOS.includes(localStorage.getItem(LS)) ? localStorage.getItem(LS) : "off"; } catch (e) {}
-  let voz = null;
-  const escolher = () => { const vs = S?.getVoices?.() || []; voz = vs.find(v => /pt[-_]BR/i.test(v.lang) && /google|natural|online|luciana|francisca|antonio|thalita/i.test(v.name)) || vs.find(v => /pt[-_]BR/i.test(v.lang)) || vs.find(v => /^pt/i.test(v.lang)) || null; };
+  const S = window.speechSynthesis, LS = "fut-voz2";
+  const EVENTOS = [["gol", "⚽ Gol"], ["penalti", "🎯 Pênalti"], ["falta", "🟢 Falta"], ["cartao", "🟨 Cartão amarelo"], ["vermelho", "🟥 Cartão vermelho"], ["defesa", "🧤 Defesa"],
+    ["trave", "💥 Trave"], ["fora", "😮 Chute para fora"], ["impedimento", "🚩 Impedimento"], ["inicio", "▶ Início do jogo"], ["intervalo", "⏸ Intervalo"], ["fim", "🏁 Fim de jogo"]];
+  const BORDOES = {
+    gol: ["Gooooooool!", "É gol! É gol! É gol!", "Lá dentro! Gooool!", "Balançou a rede! Gooool!"], penalti: ["É pênalti!", "Pênalti! O juiz aponta a marca da cal!"],
+    falta: ["Falta!", "O juiz marca falta.", "Apitou: falta."], cartao: ["Cartão amarelo!", "Amarelo para ele."], vermelho: ["Vermelho! Está expulso!", "Cartão vermelho!"],
+    defesa: ["Que defesa!", "Salvou o goleiro!", "Defendeu!"], trave: ["Na trave!", "Explodiu no poste!", "No travessão!"], fora: ["Uuuh! Passou perto!", "Para fora!"],
+    impedimento: ["Impedimento!", "Bandeira levantada: impedido."], inicio: ["Rola a bola! Começa o jogo!"], intervalo: ["Fim do primeiro tempo!"], fim: ["Acabou! Fim de jogo!", "Termina a partida!"] };
+  const cfg = Object.assign({ modo: "off", sons: true, vol: .9 }, (() => { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { return {}; } })());
+  const salvarCfg = () => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch (e) {} };
+  let voz = null, ctx = null, tocando = null, ate = 0;
+  const escolher = () => { const vs = S?.getVoices?.() || []; const br = vs.filter(v => /pt[-_]BR/i.test(v.lang));
+    voz = br.find(v => /natural|online/i.test(v.name)) || br.find(v => /google/i.test(v.name)) || br[0] || vs.find(v => /^pt/i.test(v.lang)) || null; };
   if (S) { escolher(); S.onvoiceschanged = escolher; }
-  const IMPORTANTE = /chut|finaliz|bate|cabe[cç]|defend|defesa|espalma|trave|travess|p[eê]nalti|impedimento|contra-ataque|cara a cara|sozinho|escanteio|falta perigosa|cobra a falta|na barreira|cruza na [áa]rea|rompe a linha|sai do gol|abafa|substitui|sai .*entra|machuc|sente e cai/i;
-  const limpar = html => { const d = document.createElement("div"); d.innerHTML = html; let s = d.textContent || "";
-    return s.replace(/^\s*(\d+)'(\+\d+)?\s*/, (m, a) => a === "1" ? "Com 1 minuto, " : `Aos ${a} minutos, `).replace(/(\d+)\s*[×x]\s*(\d+)/g, "$1 a $2").replace(/[🟨🟥⚽🚩⚡🗣📋🔁🚑⏸📺🔴🧱💥❌✅⭐🏆👏]/gu, "").replace(/\s+/g, " ").trim(); };
-  function botao() { const b = $("voz"); if (b) b.textContent = modo === "off" ? "🔇 Voz" : modo === "lances" ? "🔊 Voz: lances" : "🔊 Voz: tudo"; }
-  function dizer(txt, gol) {
-    if (!S || !txt) return;
-    const u = new SpeechSynthesisUtterance(txt); u.lang = voz?.lang || "pt-BR"; if (voz) u.voice = voz;
-    const vel = J?.vel || 1; u.rate = gol ? 1.08 : Math.min(1.5, 1.08 + (vel - 1) * .07); u.pitch = gol ? 1.25 : 1; u.volume = 1;
-    S.speak(u);
+  // ---- gravações do técnico (ficam neste navegador) ----
+  const db = () => new Promise((ok, erro) => { const r = indexedDB.open("fut-narrador", 1); r.onupgradeneeded = () => r.result.createObjectStore("audios"); r.onsuccess = () => ok(r.result); r.onerror = () => erro(r.error); });
+  const op = async (modo, fn) => { const d = await db(); return new Promise((ok, erro) => { const tx = d.transaction("audios", modo), r = fn(tx.objectStore("audios")); tx.oncomplete = () => ok(r?.result); tx.onerror = () => erro(tx.error); }); };
+  const audios = {};
+  (async () => { try { for (const [k] of EVENTOS) { const b = await op("readonly", s => s.get(k)); if (b) audios[k] = URL.createObjectURL(b); } } catch (e) {} })();
+  async function guardar(k, blob) { try { await op("readwrite", s => s.put(blob, k)); } catch (e) {} if (audios[k]) URL.revokeObjectURL(audios[k]); audios[k] = URL.createObjectURL(blob); }
+  async function apagar(k) { try { await op("readwrite", s => s.delete(k)); } catch (e) {} if (audios[k]) URL.revokeObjectURL(audios[k]); delete audios[k]; }
+  // ---- sons do estádio (sintetizados) ----
+  const ac = () => { if (!ctx) try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} if (ctx?.state === "suspended") ctx.resume(); return ctx; };
+  function ruido(seg) { const c = ac(), b = c.createBuffer(1, c.sampleRate * seg, c.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const s = c.createBufferSource(); s.buffer = b; return s; }
+  function torcida(seg, pico, forte) {                    // multidão: ruído filtrado que cresce e some
+    const c = ac(); if (!c) return; const t0 = c.currentTime, s = ruido(seg), f = c.createBiquadFilter(), g = c.createGain();
+    f.type = "bandpass"; f.frequency.value = forte ? 900 : 650; f.Q.value = .7; g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(pico * cfg.vol, t0 + (forte ? .35 : .15)); g.gain.exponentialRampToValueAtTime(.0001, t0 + seg);
+    s.connect(f); f.connect(g); g.connect(c.destination); s.start(t0); s.stop(t0 + seg);
   }
+  function apito(vezes = 1, longo = false) {
+    const c = ac(); if (!c) return; let t0 = c.currentTime;
+    for (let i = 0; i < vezes; i++) { const o = c.createOscillator(), m = c.createOscillator(), mg = c.createGain(), g = c.createGain(), d = longo && i === vezes - 1 ? .9 : .28;
+      o.frequency.value = 2900; m.frequency.value = 38; mg.gain.value = 140; m.connect(mg); mg.connect(o.frequency);
+      g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(.16 * cfg.vol, t0 + .02); g.gain.setValueAtTime(.16 * cfg.vol, t0 + d - .05); g.gain.exponentialRampToValueAtTime(.0001, t0 + d);
+      o.connect(g); g.connect(c.destination); o.start(t0); m.start(t0); o.stop(t0 + d); m.stop(t0 + d); t0 += d + .14; }
+  }
+  // ---- qual lance é ----
+  function evento(cls, txt) {
+    if (cls === "gol") return "gol"; if (cls === "verm") return /vermelho|expuls/i.test(txt) ? "vermelho" : null; if (cls === "cartao") return /vermelho/i.test(txt) ? "vermelho" : "cartao";
+    if (cls === "apito") return /fim de jogo|^\s*FIM/i.test(txt) ? "fim" : /intervalo|fim do primeiro/i.test(txt) ? "intervalo" : /rola a bola|começa o segundo tempo/i.test(txt) ? "inicio" : null;
+    if (/impedimento|bandeirinha levanta|estava adiantado/i.test(txt)) return "impedimento";
+    if (/dentro da área!|marca pênalti|é pênalti/i.test(txt)) return "penalti";
+    if (/\bfalta de \S.* em |faz falta|comete falta/i.test(txt)) return "falta";
+    if (/na trave|travessão|pé da trave|carimba a trave|explode no/i.test(txt)) return "trave";
+    if (/defesa|defende|espalma|salva!|faz milagre|adivinha o canto|voa e/i.test(txt)) return "defesa";
+    if (/para fora|por cima do gol|longe do alvo|tirou tinta|raspando a trave|isolou/i.test(txt)) return "fora";
+    return null;
+  }
+  const sorte = a => a[Math.floor(Math.random() * a.length)];
+  function dizer(txt, animado) {
+    if (!S || !txt) return; const u = new SpeechSynthesisUtterance(txt); u.lang = voz?.lang || "pt-BR"; if (voz) u.voice = voz;
+    u.rate = animado ? 1.12 : 1.05; u.pitch = animado ? 1.2 : 1; u.volume = cfg.vol; S.speak(u);
+  }
+  function tocarArquivo(k) { const a = new Audio(audios[k]); a.volume = cfg.vol; tocando = a; a.play().catch(() => {}); }
+  function narrarEvento(k, txt) {
+    const urgente = k === "gol" || k === "fim" || k === "vermelho" || k === "penalti";
+    if (!urgente && Date.now() < ate) return;               // ainda falando o lance anterior: não acumula
+    if (urgente) VOZ.calar();
+    if (cfg.sons) {
+      if (k === "gol") torcida(6, .5, true); else if (k === "fora" || k === "trave" || k === "defesa") torcida(1.6, .22);
+      if (k === "falta" || k === "penalti" || k === "cartao" || k === "vermelho" || k === "impedimento") apito(1); else if (k === "inicio") apito(1, true); else if (k === "intervalo") apito(2, true); else if (k === "fim") apito(3, true);
+    }
+    if (cfg.modo === "gravacoes" && audios[k]) { tocarArquivo(k); ate = Date.now() + 2500; return; }
+    let fala = sorte(BORDOES[k]);
+    if (k === "gol") { const m = txt.match(/GOOO+L do ([^!]+)!\s*([^,.!]+?) marca/i); if (m) fala += ` Gol do ${m[1]}! ${m[2]}!`; }
+    if (k === "fim") { const m = txt.match(/:\s*(.+?)\s(\d+)\s*[×x]\s*(\d+)\s(.+?)\.?$/); if (m) fala += ` ${m[1]} ${m[2]}, ${m[4]} ${m[3]}.`; }
+    setTimeout(() => dizer(fala, k === "gol"), cfg.sons && k !== "gol" ? 250 : 0); ate = Date.now() + 1800 + fala.length * 45;
+  }
+  const B = () => $("voz");
   return {
+    EVENTOS, cfg,
     falar(cls, html) {
-      if (modo === "off" || !S || !J || J.rapido) return;
-      const vel = J.vel || 1, txt = limpar(html); if (!txt) return;
-      const gol = cls === "gol", apito = cls === "apito", cartao = cls === "cartao" || cls === "verm";
-      if (vel >= 8 && !gol && !apito) return;
-      if (vel >= 4 && !gol && !apito && !cartao) return;
-      if (!gol && !apito && !cartao && modo === "lances" && !IMPORTANTE.test(txt)) return;
-      if (gol) { S.cancel(); dizer("Goooooool!", true); dizer(txt.replace(/GOOO+L/gi, "gol"), false); return; }
-      if (S.pending && !apito && !cartao) return;             // não acumula fila: se ainda está falando, pula o lance comum
-      dizer(txt, false);
+      if (cfg.modo === "off" || !J || J.rapido) return;
+      const d = document.createElement("div"); d.innerHTML = html; const txt = d.textContent || "", k = evento(cls, txt); if (!k) return;
+      const vel = J.vel || 1; if (vel >= 8 && !["gol", "fim"].includes(k)) return; if (vel >= 4 && !["gol", "fim", "penalti", "vermelho", "intervalo", "inicio"].includes(k)) return;
+      narrarEvento(k, txt);
     },
-    calar() { try { S?.cancel(); } catch (e) {} },
-    trocar() { modo = MODOS[(MODOS.indexOf(modo) + 1) % MODOS.length]; try { localStorage.setItem(LS, modo); } catch (e) {} botao();
-      if (!S) { alert("Este navegador não tem voz para narrar. Tente o Chrome ou o Edge."); modo = "off"; botao(); return; }
-      this.calar(); if (modo !== "off") dizer(modo === "lances" ? "Narração ligada: lances importantes." : "Narração ligada: todos os lances.", false); },
-    botao
+    calar() { try { S?.cancel(); } catch (e) {} try { tocando?.pause(); } catch (e) {} ate = 0; },
+    botao() { const b = B(); if (b) b.textContent = cfg.modo === "off" ? "🔇 Narrador" : "🔊 Narrador"; },
+    teste(k) { ac(); narrarEvento(k, k === "gol" ? "GOOOL do Seu Time! Craque marca" : ""); },
+    async gravar(k, el) {
+      if (!navigator.mediaDevices?.getUserMedia) return alert("Este navegador não grava áudio. Use “Escolher arquivo”.");
+      let st; try { st = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { return alert("Sem permissão para usar o microfone."); }
+      const rec = new MediaRecorder(st), partes = []; rec.ondataavailable = e => partes.push(e.data);
+      rec.onstop = async () => { st.getTracks().forEach(x => x.stop()); await guardar(k, new Blob(partes, { type: rec.mimeType || "audio/webm" })); abrirConfigVoz(); };
+      rec.start(); if (el) { el.textContent = "⏺ Gravando… (4 s)"; el.disabled = true; } setTimeout(() => rec.state !== "inactive" && rec.stop(), 4000);
+    },
+    async arquivo(k, f) { if (f) { await guardar(k, f); abrirConfigVoz(); } },
+    async apagar(k) { await apagar(k); abrirConfigVoz(); },
+    tem: k => !!audios[k],
+    setar(o) { Object.assign(cfg, o); salvarCfg(); this.botao(); }
   };
 })();
-$("voz").onclick = () => VOZ.trocar(); VOZ.botao();
+function abrirConfigVoz() {
+  const c = VOZ.cfg;
+  $("voz-corpo").innerHTML = `<p class="dica">Narra só os lances que importam (gol, falta, pênalti, cartão, defesa, trave, impedimento e apitos), com frases curtas, apito e torcida. Para uma narração de verdade, grave a sua voz (ou a de um amigo) para cada lance em “Minhas gravações”.</p>
+    <p><label><input type="radio" name="voz-modo" value="off" ${c.modo === "off" ? "checked" : ""}> Desligado</label><br>
+    <label><input type="radio" name="voz-modo" value="bordoes" ${c.modo === "bordoes" ? "checked" : ""}> Narrador do jogo (voz do navegador, só frases curtas)</label><br>
+    <label><input type="radio" name="voz-modo" value="gravacoes" ${c.modo === "gravacoes" ? "checked" : ""}> Minhas gravações (onde não houver gravação, usa o narrador do jogo)</label></p>
+    <p><label><input type="checkbox" id="voz-sons" ${c.sons ? "checked" : ""}> Sons do estádio (apito e torcida)</label> · Volume <input type="range" id="voz-vol" min="0" max="1" step=".05" value="${c.vol}"></p>
+    <table class="tab"><thead><tr><th>Lance</th><th>Gravação</th><th></th></tr></thead><tbody>${VOZ.EVENTOS.map(([k, n]) => `<tr><td>${n}</td><td>${VOZ.tem(k) ? "✅ sua" : "<span class='dica'>frase do jogo</span>"}</td>
+      <td><button data-vz-ouvir="${k}">▶</button> <button data-vz-gravar="${k}">🎙 Gravar</button> <label class="dica" style="cursor:pointer">📁<input type="file" accept="audio/*" data-vz-arq="${k}" hidden></label>${VOZ.tem(k) ? ` <button data-vz-apagar="${k}" title="Voltar à frase do jogo">🗑</button>` : ""}</td></tr>`).join("")}</tbody></table>
+    <p class="dica">Use só gravações suas ou que você tenha permissão de usar. As gravações ficam neste navegador.</p>`;
+  $("m-voz").classList.add("on");
+}
+$("voz").onclick = () => abrirConfigVoz(); VOZ.botao();
+$("voz-fechar").onclick = () => $("m-voz").classList.remove("on");
+$("m-voz").addEventListener("change", e => {
+  if (e.target.name === "voz-modo") VOZ.setar({ modo: e.target.value });
+  if (e.target.id === "voz-sons") VOZ.setar({ sons: e.target.checked });
+  if (e.target.id === "voz-vol") VOZ.setar({ vol: Number(e.target.value) });
+  if (e.target.dataset.vzArq) VOZ.arquivo(e.target.dataset.vzArq, e.target.files[0]);
+});
+$("m-voz").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.vzOuvir) VOZ.teste(b.dataset.vzOuvir); if (b.dataset.vzGravar) VOZ.gravar(b.dataset.vzGravar, b); if (b.dataset.vzApagar) VOZ.apagar(b.dataset.vzApagar); });
 $("fim-rapido").onclick = () => {                         // simula o resto sem animação
   if (!J || J.fim) return;
   VOZ.calar();
