@@ -346,7 +346,7 @@
           <div class="caixa"><h2 id="on-prox-tit">Próximo jogo</h2><div id="on-prox"></div><p class="dica" id="on-relogio"></p></div>
           <div class="caixa" style="margin-top:12px"><h2>Tática para a próxima rodada</h2>
             <div class="ft"><label>Formação</label><select id="on-form"></select></div>
-            <div class="ft"><label>Estilo</label><select id="on-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo (marca mais, sofre mais)</option><option value="de">Retranca (sofre menos, marca menos)</option></select></div>
+            <div class="ft"><label>Estilo</label><select id="on-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo (marca mais, sofre mais)</option><option value="de">Retranca (sofre menos; rouba no próprio campo e sai em contra-ataque)</option></select></div>
             <div class="ft"><label>Marcação</label><select id="on-marcacao"><option value="leve">Leve (poucas faltas, desarma menos)</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado (desarma muito, mais cartões)</option></select></div>
             <div class="ft"><label>Linha de defesa</label><select id="on-linha"><option value="normal" selected>Normal</option><option value="alta">Linha alta (mais impedimentos, mas um lançamento certo pega a zaga)</option></select></div>
             <div class="ft"><label>Jogadas</label><select id="on-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></div>
@@ -409,7 +409,7 @@
         <h2>Seu time</h2>
         <label>Time</label><select id="sel-meu"></select>
         <label>Formação</label><select id="sel-form"></select>
-        <label>Estilo</label><select id="sel-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo</option><option value="de">Defensivo (retranca)</option></select>
+        <label>Estilo</label><select id="sel-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo</option><option value="de">Defensivo (retranca e contra-ataque)</option></select>
         <label>Marcação</label><select id="sel-marcacao"><option value="leve">Leve</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado</option></select>
         <label>Linha de defesa</label><select id="sel-linha"><option value="normal" selected>Normal</option><option value="alta">Linha alta (mais impedimentos, mas um lançamento certo pega a zaga)</option></select>
         <label>Jogadas</label><select id="sel-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select>
@@ -493,7 +493,7 @@
 <div id="tela-gol" aria-live="assertive"><div class="gol-caixa"><div class="gol-txt">GOOOL!</div><div class="gol-time" id="gol-time"></div><div class="gol-autor" id="gol-autor"></div></div></div>
 <div class="modal" id="m-esc"><div class="janela" style="width:min(1060px,100%)">
   <div class="linha-campo"><h2 style="margin:0" id="esc-tit">📋 Escalação</h2>
-    <span><label class="dica">Formação <select id="esc-form"></select></label> <label class="dica">Estilo <select id="esc-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo</option><option value="de">Retranca</option></select></label> <label class="dica">Marcação <select id="esc-marcacao"><option value="leve">Leve</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado</option></select></label> <label class="dica">Jogadas <select id="esc-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></label> <label class="dica">Linha <select id="esc-linha"><option value="normal" selected>Normal</option><option value="alta">Alta</option></select></label> <button id="esc-auto">✨ Escalar automático</button></span></div>
+    <span><label class="dica">Formação <select id="esc-form"></select></label> <label class="dica">Estilo <select id="esc-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo</option><option value="de">Retranca (contra-ataque)</option></select></label> <label class="dica">Marcação <select id="esc-marcacao"><option value="leve">Leve</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado</option></select></label> <label class="dica">Jogadas <select id="esc-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></label> <label class="dica">Linha <select id="esc-linha"><option value="normal" selected>Normal</option><option value="alta">Alta</option></select></label> <button id="esc-auto">✨ Escalar automático</button></span></div>
   <p class="dica" id="esc-ajuda">Arraste as camisas no campo para mudar as posições. Arraste uma camisa do banco para cima de um titular para trocar.</p>
   <div class="esc-grade">
     <div><div class="prancheta" id="prancheta"></div>
@@ -789,6 +789,19 @@ const marc = t => MARC[t?.marcacao] || MARC.normal;
 const forcaNaFuncao = p => p.fPos?.[p.papel] ?? p.forca;   // na posição secundária ele rende a força daquela posição
 const forcaAtual = p => forcaNaFuncao(p) * adapt(p) * (0.72 + 0.28 * p.folego / 100);
 
+/* ===================== DUELOS: atacante x defensor ===================== */
+// Cada lance importante é um duelo: valor = força atual × (1 + 12% por nível da habilidade usada) × bônus (contra-ataque 1,15).
+// Chance = chance base × (valor do atacante ÷ valor do defensor)^1,5, entre 5% e 92%. Com forças iguais e sem habilidade, vale a chance base.
+const DUELO = { chute: .30, um1: .45, profundo: .50, cruz: .35 };
+function valorDuelo(p, ks, bonus = 1) {
+  if (!p) return 60;
+  const h = ks.reduce((a, [k, peso]) => a + hab(p, k) * peso, 0);
+  return forcaAtual(p) * (1 + .12 * h) * bonus;
+}
+const EXP_DUELO = 1.5;                                     // quanto a diferença de valor pesa (1 = proporcional; 2 = muito)
+function chanceDuelo(base, a, ka, d, kd, bonus = 1) { return lim(base * Math.pow(valorDuelo(a, ka, bonus) / valorDuelo(d, kd), EXP_DUELO), .05, .92); }
+const bonusContra = t => t?.contra > 0 || t?.contraLance || t?.contraChute ? 1.15 : 1;
+
 /* ===================== impedimento ===================== */
 // Regra do futebol (Lei 11): na hora do passe, o recebedor está impedido se estiver no campo de ataque, à frente da bola
 // e à frente do PENÚLTIMO adversário (o último costuma ser o goleiro). Na mesma linha = legal.
@@ -852,6 +865,25 @@ function proximoLance() {
   const of = t.estilo === "of" ? 1.25 : t.estilo === "de" ? .75 : 1;
   let dur = 5, de = { x: J.bola.x, y: J.bola.y }, texto = "", cls = "";
   d.toques++;
+  if (t.contra > 0 && d.papel !== "GOL") {                // contra-ataque em andamento: sem troca de passes no meio
+    t.contra--; t.contraLance = true;
+    try {
+      if (pb < .62) {                                       // lançamento longo para o atacante mais adiantado: duelo Passe x Marcação
+        const at = ativos(t).filter(p => p !== d && p.papel !== "GOL").sort((a, b) => prog(t, b.x) - prog(t, a.x))[0];
+        if (at) {
+          const zag = perto(o, at), ok = rnd() < chanceDuelo(DUELO.profundo, d, [["pas", 1]], zag, [["mar", 1]], 1.15);
+          t.st.passes++;
+          if (ok) { t.st.passesCertos++; nota(d, .1); J.passeDe = d; J.dono = at; J.bola = { x: xDe(t, entre(.76, .86)), y: lim(at.y + (A / 2 - at.y) * .55, 10, A - 10) };
+            return fazerLance(5 + dist(d, J.bola) / 12, de, null, `⚡ Contra-ataque! ${d.nome} lança longo para ${at.nome}.`); }
+          nota(d, -.05); t.contra = 0; trocaPosse(o, zag || goleiro(o), J.bola);
+          return fazerLance(5, de, null, `⚡ ${d.nome} tenta o lançamento no contra-ataque, mas ${zag?.nome || "a defesa"} corta.`);
+        }
+      } else if (pb > .8 && centro < 22) {                 // chegou na área no contra-ataque: finaliza (sozinho = cara a cara)
+        const sozinho = dist(perto(o, J.bola) || { x: -99, y: -99 }, J.bola) > 7;
+        t.contraChute = true; return fazerLance(4, de, () => chute(t, o, d, sozinho ? "cara" : "normal"), sozinho ? `⚡ ${d.nome} sai cara a cara no contra-ataque!` : `⚡ ${d.nome} finaliza no contra-ataque!`); }
+      t.contraLance = false;                                 // já no ataque mas longe do gol: segue o lance normal (o bônus continua enquanto durar o contra-ataque)
+    } finally { t.contraLance = false; }
+  }
   // ===== perto do gol: decide pelas habilidades (antes tocava para trás ou para fora mesmo na cara do gol) =====
   const naArea = pb > (L - 16.5) / L && centro < 20, dm = defensor ? dist(defensor, d) : 99, livre = dm > 8;
   const entreEleEGol = ativos(o).filter(p => p.papel !== "GOL" && prog(t, p.x) > pb && Math.abs(p.y - J.bola.y) < 6).length;
@@ -888,7 +920,9 @@ function proximoLance() {
       const lado = jg === "lados" ? (aberto(p) ? 1.9 : .6) : jg === "meio" ? (aberto(p) ? .55 : 1.6) : 1;
       return Math.max(.05, (av > 0 ? 1 + av * 4 * of : .6 + av * 2) * (dd < 35 ? 1 : .35) * lado); });
     const avanco = prog(t, alvo.x) - pb, dd = dist(alvo, d);
-    const chance = lim(.86 + (fa - fd) / 220 - Math.max(0, avanco) * .5 - dd / 260 + (.06 * hab(d, "pas")), .45, .97);
+    const corta = ativos(o).filter(p => p.papel !== "GOL").map(p => ({ p, d: noCorredor(p, d, alvo).d })).sort((a, b) => a.d - b.d)[0]?.p || defensor;
+    const chance = avanco > .2 ? chanceDuelo(DUELO.profundo, d, [["pas", 1]], corta, [["mar", 1]], bonusContra(t))   // passe em profundidade: duelo Passe x Marcação
+      : lim(.86 + (fa - fd) / 220 - Math.max(0, avanco) * .5 - dd / 260 + (.06 * hab(d, "pas")), .45, .97);
     t.st.passes++;
     dur = 3 + dd / 9;
     const imp = avanco > 0 && alvo.papel !== "GOL" ? impedimento(t, o, d, alvo, pb) : null;
@@ -907,6 +941,7 @@ function proximoLance() {
         const rec = lane.p; nota(rec, .1); o.st.inter = (o.st.inter || 0) + 1; scout(rec, "DS");
         trocaPosse(o, rec, lane.pt);
         texto = sorteia([`${rec.nome} intercepta o passe de ${d.nome}.`, `${rec.nome} entra na frente e rouba o passe de ${d.nome}.`, `${rec.nome} lê a jogada e corta.`]);
+        if (armarContra(o)) texto = `${rec.nome} intercepta e o ${o.curto} sai em contra-ataque!`;
         return fazerLance(dur, de, null, texto, "", lane.pt);
       }
       const fundo = avanco > .2 && prog(t, alvo.x) > .8, fora = fundo ? { x: xDe(t, 1) + sentido(t), y: lim(alvo.y, 6, A - 6) } : { x: lim(alvo.x + entre(-5, 5), 2, L - 2), y: alvo.y < A / 2 ? -1 : A + 1 };
@@ -920,7 +955,7 @@ function proximoLance() {
     if (rnd() < .25) texto = sorteia([`${d.nome} avança com a bola.`, `${d.nome} conduz pelo ${centro > 18 ? "lado" : "meio"}.`, `${d.nome} ganha espaço.`]);
   } else if (acao === "drible") {
     dur = 6;
-    const chance = lim(.5 + (fa - fd) / 120 + marc(o).tackle + (.12 * hab(d, "dri")) + (.05 * hab(d, "vel")) - (.1 * hab(defensor, "des")), .15, .9);
+    const chance = lim(chanceDuelo(DUELO.um1, d, [["dri", 1], ["vel", .5]], defensor, [["des", 1], ["mar", .5]], bonusContra(t)) + marc(o).tackle, .1, .9);   // duelo 1 contra 1
     if (rnd() < chance) {
       nota(d, .1); nota(defensor, -.05);
       const nx = lim(J.bola.x + sentido(t) * entre(7, 15), 3, L - 3), ny = lim(J.bola.y + entre(-8, 8), 3, A - 3);
@@ -930,13 +965,15 @@ function proximoLance() {
     } else {
       nota(d, -.06); nota(defensor, .12); o.st.desarmes++; scout(defensor, "DS");
       trocaPosse(o, defensor, J.bola); texto = rnd() < .6 ? `${defensor.nome} desarma ${d.nome}.` : "";
+      if (armarContra(o)) texto = `${defensor.nome} desarma ${d.nome} e o ${o.curto} puxa o contra-ataque!`;
     }
   } else if (acao === "cruz") {
     dur = 5;
     const area = ativos(t).filter(p => p !== d && SETOR[p.papel] >= 2 && prog(t, p.x) > .55);
-    const chance = lim(.3 + (fa - fd) / 250 + (.12 * hab(d, "cru")) - (tem(goleiro(o), "sai") ? .1 : 0), .12, .65);
-    if (area.length && rnd() < chance) {
-      const cab = pesoSorteio(area, p => (p.papel === "CA" ? 3 : 1) * ((1 + (2.5 - 1) * hab(p, "cab"))));
+    const cab = area.length ? pesoSorteio(area, p => (p.papel === "CA" ? 3 : 1) * ((1 + (2.5 - 1) * hab(p, "cab")))) : null;
+    const zagA = cab ? ativos(o).filter(p => p.papel !== "GOL").sort((a, b) => dist(a, cab) - dist(b, cab))[0] : null;
+    const chance = cab ? lim(chanceDuelo(DUELO.cruz, cab, [["cab", 1]], zagA, [["cab", 1]], bonusContra(t)) * (1 + .1 * hab(d, "cru")) - .06 * hab(goleiro(o), "sai"), .08, .8) : 0;   // duelo pelo alto: Cabeceio x Jogo aéreo
+    if (cab && rnd() < chance) {
       const impC = impedimento(t, o, d, cab, pb); if (impC?.marcado) return impC.lance;   // cruzamento também é passe: vale a regra
       J.bola = { x: xDe(t, entre(.87, .93)), y: A / 2 + entre(-7, 7) }; J.dono = cab; nota(d, .05); J.passeDe = d;
       return fazerLance(dur, de, () => chute(t, o, cab, "cabeca"), `${d.nome} cruza na área...`);
@@ -1076,11 +1113,11 @@ function chute(t, o, autor, tipo) {
   const bonus = (tem(autor, "fin") && tipo !== "falta" && tipo !== "penalti" ? 1 : 0), longe = tem(autor, "lon") && dGol > 18;
   const cara = tipo === "cara"; if (cara) tipo = "normal";
   let noAlvo = rnd() < (cara ? lim(.72 + (fa - 70) / 150 + .1 * hab(autor, "fin"), .55, .92) : tipo === "penalti" ? .93 + (.04 * hab(autor, "pen")) : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 + (.1 * hab(autor, "fal")) : 0) + bonus * .06 + (longe ? .08 : 0) + (tipo === "cabeca" && .08 * hab(autor, "cab")), .2, .8));
+  const razao = Math.pow(valorDuelo(autor, [[tipo === "cabeca" ? "cab" : "fin", 1]], bonusContra(t)) / valorDuelo(gk, [["ref", 1]]), EXP_DUELO); t.contraChute = false;   // duelo Finalização x Reflexo
   let pGol = tipo === "penalti" ? lim(.86 + (fa - fg) / 250 + (.06 * hab(autor, "pen")) - (.12 * hab(gk, "ppn")), .6, .94)
-    : lim(.35 - dGol * .012 + (fa - fg) / 160 + (tipo === "cabeca" ? -.06 + (.08 * hab(autor, "cab")) : 0) + (tipo === "falta" ? -.12 + (.12 * hab(autor, "fal")) : 0) + (tipo === "rebote" ? -.05 : 0)
-      + bonus * .07 + (longe ? dGol * .005 : 0) - (.07 * hab(gk, "ref")), .04, .65);
+    : lim((DUELO.chute + .02 - dGol * .012 + (tipo === "cabeca" ? -.03 : 0) + (tipo === "falta" ? -.12 + (.12 * hab(autor, "fal")) : 0) + (tipo === "rebote" ? -.04 : 0) + (longe ? dGol * .005 : 0)) * razao, .04, .7);
   if (tipo === "falta" && !J.roteiro) { noAlvo = rnd() < lim(.4 + .12 * hab(autor, "fal") - Math.max(0, dGol - 20) * .008, .2, .7); pGol = lim(.07 + .08 * hab(autor, "fal") + (fa - fg) / 220 - Math.max(0, dGol - 18) * .008 - .05 * hab(gk, "ref"), .06, .45); }
-  if (cara && tipo !== "penalti") pGol = lim(.27 + (fa - fg) / 160 + .1 * hab(autor, "fin") - .12 * hab(gk, "ref") - .04 * hab(gk, "sai"), .22, .8);   // cara a cara: REFLEXO do goleiro pesa mais
+  if (cara && tipo !== "penalti") pGol = lim((DUELO.chute - .03 - .04 * hab(gk, "sai")) * razao, .2, .8);   // cara a cara: o mesmo duelo, com vantagem do atacante   // cara a cara: REFLEXO do goleiro pesa mais
   if (J.roteiro) {                                          // replay: os gols acontecem exatamente como o servidor decidiu
     const g = J.roteiro.find(x => !x.feito && x.lado === t.lado && minuto() >= x.min);
     if (g) { g.feito = true; noAlvo = true; pGol = 1; } else pGol = 0;
@@ -1166,7 +1203,16 @@ function cartao(t, p) {
   if (p.cartao === 1 || rnd() < marc(t).verm) { const segundo = p.cartao === 1; p.cartao = 2; scout(p, "CV"); p.fora = true; t.st.vermelhos++; nota(p, -1.5); narrar("verm", `${minutoTxt()}🟥 Cartão vermelho para ${p.nome} (${t.curto})! O ${t.nome} fica com ${ativos(t).length}.`); if (J.dono === p) { J.dono = perto(t, J.bola) || goleiro(t); } cenaCartao(t, p, true, segundo); }
   else { p.cartao = 1; t.st.amarelos++; scout(p, "CA"); nota(p, -.3); narrar("cartao", `${minutoTxt()}🟨 Amarelo para ${p.nome} (${t.curto}).`); cenaCartao(t, p, false); }
 }
-function trocaPosse(t, p, pos) { J.posse = t; J.dono = p || perto(t, pos) || goleiro(t); J.bola = { x: pos.x, y: pos.y }; J.passeDe = null; }
+// COMBO Retranca + contra-ataque: time na postura Defesa que rouba a bola no próprio campo (desarme ou interceptação)
+// ganha 2 lances de contra-ataque: pula o meio-campo (lançamento longo ou chute) com bônus de 1,15 nos duelos.
+function armarContra(o) {
+  if (o.estilo !== "de" || prog(o, J.bola.x) >= .5) return false;                       // roubada no próprio campo
+  const ataque = ativos(o).filter(p => SETOR[p.papel] === 3).length; if (!ataque) return false;   // sem ninguém na frente não há para quem sair
+  if (rnd() > .15 + .05 * ataque + (prog(o, J.bola.x) < .35 ? .1 : 0)) return false;              // nem toda roubada vira contra-ataque: depende de quem está na frente esperando
+  o.contra = 2; return true;
+}
+function trocaPosse(t, p, pos) { const r0 = J.posse && J.posse !== t ? J.posse : null; if (r0) r0.contra = 0;
+  J.posse = t; J.dono = p || perto(t, pos) || goleiro(t); J.bola = { x: pos.x, y: pos.y }; J.passeDe = null; }
 
 /* Um lance anima a bola de "de" até a posição atual em "dur" segundos de jogo, depois segue */
 function fazerLance(dur, de, depois, texto = "", cls = "", bolaFim) {
