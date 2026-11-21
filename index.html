@@ -555,7 +555,7 @@ const CAR = {
   lon: ["Chute de longe", "arrisca e acerta de fora da área"], fal: ["Cobrança de falta", "bate as faltas do time e marca mais delas"], pen: ["Pênalti", "bate os pênaltis do time com mais precisão"],
   des: ["Desarme", "rouba mais bolas nas divididas"], mar: ["Marcação", "corta mais passes"], ref: ["Reflexo", "goleiro: faz mais defesas"], ppn: ["Pega pênalti", "goleiro: defende mais pênaltis"],
   sai: ["Saída do gol", "goleiro: corta mais cruzamentos"], res: ["Resistência", "cansa menos"],
-  per: ["Persuasão", "fala com o juiz: como capitão ajuda o time (mais cartão para o rival, menos para o seu); sem ser capitão, reclama e pode levar cartão"],
+  per: ["Persuasão", "fala com o juiz: como capitão ajuda o time (mais cartão para o rival, menos para o seu); sem ser capitão, reclama e pode levar cartão — exceto o porta-voz de um goleiro capitão com Persuasão"],
   ind: ["Indisciplinado", "faz mais faltas e leva mais cartões"], fol: ["Pouco fôlego", "cansa mais rápido"]
 };
 const CAR_POS = { GOL: ["ref", "ppn", "sai"], ZAG: ["des", "mar", "cab", "res"], LD: ["vel", "cru", "des", "res"], LE: ["vel", "cru", "des", "res"], VOL: ["des", "mar", "pas", "res", "lon"],
@@ -678,6 +678,17 @@ function cobPadrao(t) {
 }
 const oficial = (t, tipo) => { const n = t.cob?.[tipo]; return n ? ativos(t).find(p => p.nome === n && p.papel !== "GOL") : null; };
 const capitao = t => { const n = t.cob?.cap; return n ? ativos(t).find(p => p.nome === n) : null; };
+// Goleiro capitão com Persuasão não sai do gol para falar com o juiz: ele designa um PORTA-VOZ de linha.
+// Só vale se o porta-voz também tiver Persuasão; ele fala pelo capitão e fica imune ao cartão por reclamação.
+const vozValido = p => p && p.papel !== "GOL" && !p.fora && tem(p, "per");
+const goleiroCapPersuasivo = t => { const c = capitao(t); return !!c && c.papel === "GOL" && tem(c, "per"); };
+function portaVoz(t) {
+  if (!goleiroCapPersuasivo(t)) return null;
+  const n = t.cob?.voz;
+  if (n === "") return null;                                // o técnico escolheu não ter porta-voz
+  if (n) { const p = ativos(t).find(x => x.nome === n); if (vozValido(p)) return p; }
+  return ativos(t).filter(vozValido).sort((a, b) => hab(b, "per") - hab(a, "per") || b.forca - a.forca)[0] || null;   // automático: o mais persuasivo
+}
 
 /* ===================== estado da partida ===================== */
 let J = null;   // { casa, fora, meu, seg, posse(time), dono(jogador), bola{x,y}, anim, eventos... }
@@ -958,11 +969,13 @@ function falta(t, o, vit, fal) {
   if (naArea) { scout(vit, "PS"); scout(fal, "PC"); } else { scout(vit, "FS"); scout(fal, "FC"); }
   // persuasão: o CAPITÃO com essa habilidade fala com o juiz e ajuda o time (mais cartão para o rival, menos para o seu).
   // Quem tem persuasão mas NÃO é o capitão também reclama — e pode levar cartão por reclamação.
+  // Goleiro capitão: quem vai até o juiz é o porta-voz (jogador de linha com Persuasão), que não leva cartão por reclamar.
   const capT = capitao(t), capO = capitao(o), fala = c => c && tem(c, "per");
+  const quem = time => { const c = capitao(time), v = portaVoz(time); return v ? `${v.nome}, porta-voz do capitão ${c.nome},` : `O capitão ${c.nome}`; };
   const pressao = (fala(capT) ? 1 + .35 * hab(capT, "per") : 1) * (fala(capO) ? 1 - .25 * hab(capO, "per") : 1);
-  if (rnd() < (naArea ? .5 : marc(o).cartao) * ((1 + (1.6 - 1) * hab(fal, "ind"))) * pressao) { if (fala(capT) && rnd() < .3) narrar("", `${minutoTxt()}🗣 O capitão ${capT.nome} conversa com o juiz...`); cartao(o, fal); }
-  else if (fala(capO) && rnd() < .25) narrar("", `${minutoTxt()}🗣 O capitão ${capO.nome} acalma o juiz.`);
-  for (const time of [t, o]) for (const q of ativos(time)) if (tem(q, "per") && q !== capitao(time) && q.cartao < 2 && rnd() < .006) { narrar("cartao", `${minutoTxt()}🗣 ${q.nome} (${time.curto}) reclama com o juiz, mas não é o capitão...`); cartao(time, q); }
+  if (rnd() < (naArea ? .5 : marc(o).cartao) * ((1 + (1.6 - 1) * hab(fal, "ind"))) * pressao) { if (fala(capT) && rnd() < .3) narrar("", `${minutoTxt()}🗣 ${quem(t)} conversa com o juiz...`); cartao(o, fal); }
+  else if (fala(capO) && rnd() < .25) narrar("", `${minutoTxt()}🗣 ${quem(o)} acalma o juiz.`);
+  for (const time of [t, o]) for (const q of ativos(time)) if (tem(q, "per") && q !== capitao(time) && q !== portaVoz(time) && q.cartao < 2 && rnd() < .006) { narrar("cartao", `${minutoTxt()}🗣 ${q.nome} (${time.curto}) reclama com o juiz, mas não é o capitão...`); cartao(time, q); }
   bolaParada("falta");
   if (naArea) return penalti(t, o);
   const cob = cobrador(t, "fal"), de = { ...J.bola };
@@ -1474,11 +1487,17 @@ function desenharEscalacao() {
   $("esc-tit-l").innerHTML = t.jog.map(p => lj(p, "tit")).join("");
   t.cob ||= cobPadrao(t); const tit = t.jog.filter(p => !p.fora);
   $("esc-cobs").innerHTML = `<b class="dica" style="grid-column:1/-1">🎯 Cobradores oficiais e capitão</b>` + COBS.map(([k, rot]) => `<label class="dica">${k === "cap" ? "©" : "⚽"} ${rot}</label><select data-cob="${k}">${tit.filter(p => k === "cap" || p.papel !== "GOL").map(p => `<option ${t.cob[k] === p.nome ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>`).join("") +
-    `<span class="dica" style="grid-column:1/-1">Se o capitão tem a habilidade <b>Persuasão</b>, ele fala com o juiz e ajuda o time (mais cartão para o rival, menos para o seu). Outros jogadores com Persuasão que não são o capitão também reclamam — e podem levar cartão por isso.${(() => { const c = tit.filter(p => tem(p, "per")).map(p => p.nome); return c.length ? ` Titulares com Persuasão: <b>${c.map(esc).join(", ")}</b>.` : " Nenhum titular tem Persuasão."; })()}</span>`;
+    (goleiroCapPersuasivo(t) ? (() => { const ok = tit.filter(vozValido), v = portaVoz(t);
+      return `<label class="dica">🗣 Porta-voz</label>` + (ok.length ? `<select data-cob="voz"><option value="" ${t.cob.voz === "" ? "selected" : ""}>Ninguém</option>${ok.map(p => `<option ${v === p ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>`
+        : `<span class="dica">Nenhum jogador de linha tem Persuasão</span>`) +
+        `<span class="dica" style="grid-column:1/-1">O capitão é goleiro e não sai do gol para falar com o juiz: o <b>porta-voz</b> faz isso por ele e não leva cartão por reclamação. Só pode ser porta-voz quem também tem Persuasão.</span>`; })() : "") +
+    `<span class="dica" style="grid-column:1/-1">Se o capitão tem a habilidade <b>Persuasão</b>, ele fala com o juiz e ajuda o time (mais cartão para o rival, menos para o seu). Outros jogadores com Persuasão que não são o capitão também reclamam — e podem levar cartão por isso (menos o porta-voz, quando o capitão é goleiro).${(() => { const c = tit.filter(p => tem(p, "per")).map(p => p.nome); return c.length ? ` Titulares com Persuasão: <b>${c.map(esc).join(", ")}</b>.` : " Nenhum titular tem Persuasão."; })()}</span>`;
   $("esc-res-l").innerHTML = t.banco.map(p => lj(p, "res")).join("") + ((t.lesionados || []).length ? `<p class="dica" style="margin-top:8px">🚑 Contundidos (fora): ${t.lesionados.map(p => `${esc(p.nome)} (${p.lesao} jogo${p.lesao > 1 ? "s" : ""})`).join(", ")}</p>` : "") || "<p class='dica'>Sem reservas.</p>";
 }
 $("esc-cobs").addEventListener("change", e => { const sl = e.target.closest("[data-cob]"); if (!sl) return; const t = timeEsc(); (t.cob ||= {})[sl.dataset.cob] = sl.value;
-  if (J && ESC_MODO === "jogo") narrar("", `${minutoTxt()}📋 ${t.curto}: ${COBS.find(c => c[0] === sl.dataset.cob)[1].toLowerCase()} agora é com ${sl.value}.`); });
+  const rot = sl.dataset.cob === "voz" ? "porta-voz do capitão" : COBS.find(c => c[0] === sl.dataset.cob)[1].toLowerCase();
+  if (J && ESC_MODO === "jogo") narrar("", `${minutoTxt()}📋 ${t.curto}: ${rot} agora é ${sl.value ? "com " + sl.value : "ninguém"}.`);
+  if (sl.dataset.cob === "cap" || sl.dataset.cob === "voz") desenharEscalacao(); });
 function trocarNaEscalacao(a, b) {                        // a e b: jogadores (titular ou reserva) — troca de lugar
   const t = timeEsc(), ia = t.jog.indexOf(a), ib = t.jog.indexOf(b);
   if (a === b || a.saiu || b.saiu || a.fora || b.fora) return;
@@ -3238,7 +3257,7 @@ function desenharPlantel() {
       ${painelPontos(sel[0], sel[1], sel[2], ptsHab(sel[0], sel[1]))}
       <div class="dica">Último jogo: ${ss.ult != null ? `<b>${ss.ult.toFixed(1)}</b> pts${ss.ultSc ? ` (${scoutsTxt(ss.ultSc)})` : ""}` : "--"} · média na temporada ${ss.tj ? ((ss.tp || 0) / ss.tj).toFixed(2) : "--"} pts</div>
       <div class="dica" style="margin-top:4px">Experiência ${Math.round(xpDe(id, sel[0]))}/100 <span style="display:inline-block;width:110px;height:10px;background:#222;border-radius:4px;overflow:hidden;vertical-align:middle"><i style="display:block;height:100%;width:${Math.round(xpDe(id, sel[0]))}%;background:#6aa9ff"></i></span></div><div style="margin:4px 0">${caracteristicas(sel[0], sel[1], sel[2]).map(k => `<span class="car ${k === "ind" || k === "fol" ? "neg" : ""}" title="${CAR[k][1]}">${CAR[k][0]}${k === "ind" || k === "fol" ? "" : " " + "★".repeat(nivelHab(sel[0], sel[1], sel[2], k)) + "☆".repeat(5 - nivelHab(sel[0], sel[1], sel[2], k))}</span>`).join("")}</div>
-${caracteristicas(sel[0], sel[1], sel[2]).includes("per") ? `<div class="dica">🗣 Tem Persuasão: como capitão ajuda o time; fora da braçadeira pode levar cartão por reclamação.</div>` : ""}
+${caracteristicas(sel[0], sel[1], sel[2]).includes("per") ? `<div class="dica">🗣 Tem Persuasão: como capitão ajuda o time; fora da braçadeira pode levar cartão por reclamação, a não ser que seja o porta-voz de um goleiro capitão com Persuasão.</div>` : ""}
       <div class="dica">Valor ${dinheiro(valorJog(sel))} · salário ${dinheiro(salarioJog(sel))}/rodada · ${lesao(id, sel[0]) ? `🚑 fora por ${lesao(id, sel[0])} jogo(s)` : `energia ${energia(id, sel[0])}%`}</div>
       <table class="tab" style="margin-top:6px"><thead><tr><th></th><th>Temporada</th><th>Carreira</th></tr></thead><tbody>
       <tr><td>Jogos</td><td>${ss.tj}</td><td>${ss.cj}</td></tr><tr><td>Gols</td><td>${ss.tg}</td><td>${ss.cg}</td></tr><tr><td>Assistências</td><td>${ss.ta}</td><td>${ss.ca}</td></tr><tr><td>Nota média</td><td>${nm(ss.tn, ss.tj)}</td><td>${nm(ss.cn, ss.cj)}</td></tr><tr><td>Pontos (Cartola)</td><td>${(ss.tp || 0).toFixed(1)}</td><td>${(ss.cp || 0).toFixed(1)}</td></tr></tbody></table>
