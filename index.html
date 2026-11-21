@@ -1728,12 +1728,23 @@ const VOZ = window.VOZ = (() => {
   const S = window.speechSynthesis, LS = "fut-voz2";
   const EVENTOS = [["gol", "⚽ Gol"], ["penalti", "🎯 Pênalti"], ["falta", "🟢 Falta"], ["cartao", "🟨 Cartão amarelo"], ["vermelho", "🟥 Cartão vermelho"], ["defesa", "🧤 Defesa"],
     ["trave", "💥 Trave"], ["fora", "😮 Chute para fora"], ["impedimento", "🚩 Impedimento"], ["inicio", "▶ Início do jogo"], ["intervalo", "⏸ Intervalo"], ["fim", "🏁 Fim de jogo"]];
-  const BORDOES = {
+  const CLASSICO = {
     gol: ["Gooooooool!", "É gol! É gol! É gol!", "Lá dentro! Gooool!", "Balançou a rede! Gooool!"], penalti: ["É pênalti!", "Pênalti! O juiz aponta a marca da cal!"],
     falta: ["Falta!", "O juiz marca falta.", "Apitou: falta."], cartao: ["Cartão amarelo!", "Amarelo para ele."], vermelho: ["Vermelho! Está expulso!", "Cartão vermelho!"],
     defesa: ["Que defesa!", "Salvou o goleiro!", "Defendeu!"], trave: ["Na trave!", "Explodiu no poste!", "No travessão!"], fora: ["Uuuh! Passou perto!", "Para fora!"],
     impedimento: ["Impedimento!", "Bandeira levantada: impedido."], inicio: ["Rola a bola! Começa o jogo!"], intervalo: ["Fim do primeiro tempo!"], fim: ["Acabou! Fim de jogo!", "Termina a partida!"] };
-  const cfg = Object.assign({ modo: "off", sons: true, vol: .9 }, (() => { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { return {}; } })());
+  // Zé do Auditório: personagem ORIGINAL do jogo (apresentador animado), com bordões próprios
+  const AUDITORIO = {
+    gol: ["Gooool! Vai que é sua, torcida!", "É gol, minha gente! Uma salva de palmas!", "Gol! Que beleza, que beleza! Solta a música!", "Gooool! Quem gostou bate palma!"],
+    penalti: ["Pênalti! Atenção, auditório, que agora é pra valer!", "É pênalti, minha gente! Silêncio na arquibancada!"],
+    falta: ["Falta! Ô juiz, que é isso?", "Opa, falta! Calma, rapaziada!"], cartao: ["Amarelinho pra ele! Comporte-se, meu filho!", "Cartão amarelo! O juiz hoje não está pra brincadeira!"],
+    vermelho: ["Vermelho! Tchau, tchau, pode ir pro chuveiro!", "Expulso! Despede-se da torcida!"], defesa: ["Que defesa! Palmas pro goleiro!", "Pegou! Esse goleiro merece um troféu!"],
+    trave: ["Na trave! Quase, quase, minha gente!", "Bateu no poste! Que azar!"], fora: ["Uuuh! Passou raspando!", "Pra fora! Fica pra próxima!"],
+    impedimento: ["Impedido! A bandeirinha não perdoa!", "Impedimento! Volta, volta!"], inicio: ["Está começando o espetáculo! Rola a bola, torcida!"],
+    intervalo: ["Intervalo! Pega a pipoca que já voltamos!"], fim: ["Acabou o espetáculo! Obrigado, torcida!", "Fim de jogo! Até a próxima, minha gente!"] };
+  const ESTILOS = { classico: { nome: "Narrador clássico", frases: CLASSICO, tom: 1, ritmo: 1.05 }, auditorio: { nome: "Zé do Auditório (apresentador animado)", frases: AUDITORIO, tom: 1.35, ritmo: 1.15 } };
+  const BORDOES = new Proxy({}, { get: (_, k) => (ESTILOS[cfg.estilo] || ESTILOS.classico).frases[k] });
+  const cfg = Object.assign({ modo: "off", sons: true, vol: .9, estilo: "classico" }, (() => { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { return {}; } })());
   const salvarCfg = () => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch (e) {} };
   let voz = null, ctx = null, tocando = null, ate = 0;
   const escolher = () => { const vs = S?.getVoices?.() || []; const br = vs.filter(v => /pt[-_]BR/i.test(v.lang));
@@ -1776,7 +1787,7 @@ const VOZ = window.VOZ = (() => {
   const sorte = a => a[Math.floor(Math.random() * a.length)];
   function dizer(txt, animado) {
     if (!S || !txt) return; const u = new SpeechSynthesisUtterance(txt); u.lang = voz?.lang || "pt-BR"; if (voz) u.voice = voz;
-    u.rate = animado ? 1.12 : 1.05; u.pitch = animado ? 1.2 : 1; u.volume = cfg.vol; S.speak(u);
+    const e = ESTILOS[cfg.estilo] || ESTILOS.classico; u.rate = e.ritmo + (animado ? .07 : 0); u.pitch = Math.min(2, e.tom + (animado ? .2 : 0)); u.volume = cfg.vol; S.speak(u);
   }
   function tocarArquivo(k) { const a = new Audio(audios[k]); a.volume = cfg.vol; tocando = a; a.play().catch(() => {}); }
   function narrarEvento(k, txt) {
@@ -1795,7 +1806,7 @@ const VOZ = window.VOZ = (() => {
   }
   const B = () => $("voz");
   return {
-    EVENTOS, cfg,
+    EVENTOS, cfg, ESTILOS,
     falar(cls, html) {
       if (cfg.modo === "off" || !J || J.rapido) return;
       const d = document.createElement("div"); d.innerHTML = html; const txt = d.textContent || "", k = evento(cls, txt); if (!k) return;
@@ -1824,6 +1835,7 @@ function abrirConfigVoz() {
     <p><label><input type="radio" name="voz-modo" value="off" ${c.modo === "off" ? "checked" : ""}> Desligado</label><br>
     <label><input type="radio" name="voz-modo" value="bordoes" ${c.modo === "bordoes" ? "checked" : ""}> Narrador do jogo (voz do navegador, só frases curtas)</label><br>
     <label><input type="radio" name="voz-modo" value="gravacoes" ${c.modo === "gravacoes" ? "checked" : ""}> Minhas gravações (onde não houver gravação, usa o narrador do jogo)</label></p>
+    <p><b>Estilo:</b> ${Object.entries(VOZ.ESTILOS).map(([k, e]) => `<label style="margin-right:12px"><input type="radio" name="voz-estilo" value="${k}" ${c.estilo === k ? "checked" : ""}> ${e.nome}</label>`).join("")}</p>
     <p><label><input type="checkbox" id="voz-sons" ${c.sons ? "checked" : ""}> Sons do estádio (apito e torcida)</label> · Volume <input type="range" id="voz-vol" min="0" max="1" step=".05" value="${c.vol}"></p>
     <table class="tab"><thead><tr><th>Lance</th><th>Gravação</th><th></th></tr></thead><tbody>${VOZ.EVENTOS.map(([k, n]) => `<tr><td>${n}</td><td>${VOZ.tem(k) ? "✅ sua" : "<span class='dica'>frase do jogo</span>"}</td>
       <td><button data-vz-ouvir="${k}">▶</button> <button data-vz-gravar="${k}">🎙 Gravar</button> <label class="dica" style="cursor:pointer">📁<input type="file" accept="audio/*" data-vz-arq="${k}" hidden></label>${VOZ.tem(k) ? ` <button data-vz-apagar="${k}" title="Voltar à frase do jogo">🗑</button>` : ""}</td></tr>`).join("")}</tbody></table>
@@ -1834,6 +1846,7 @@ $("voz").onclick = () => abrirConfigVoz(); VOZ.botao();
 $("voz-fechar").onclick = () => $("m-voz").classList.remove("on");
 $("m-voz").addEventListener("change", e => {
   if (e.target.name === "voz-modo") VOZ.setar({ modo: e.target.value });
+  if (e.target.name === "voz-estilo") { VOZ.setar({ estilo: e.target.value }); VOZ.teste("gol"); }
   if (e.target.id === "voz-sons") VOZ.setar({ sons: e.target.checked });
   if (e.target.id === "voz-vol") VOZ.setar({ vol: Number(e.target.value) });
   if (e.target.dataset.vzArq) VOZ.arquivo(e.target.dataset.vzArq, e.target.files[0]);
