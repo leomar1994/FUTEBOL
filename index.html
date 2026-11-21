@@ -426,9 +426,9 @@
   </section>
 </div>
 
-<div class="modal" id="m-campo"><div class="janela">
+<div class="modal" id="m-campo"><div class="janela" style="width:min(1400px, 100%)">
   <div class="linha-campo"><b id="campo-placar"></b><span><button id="pausa2">⏸</button> <button id="fechar-campo">✕ Fechar</button></span></div>
-  <canvas id="campo" width="1050" height="680"></canvas>
+  <canvas id="campo" width="2100" height="1360"></canvas>
   <div id="narra"></div>
 </div></div>
 
@@ -1289,9 +1289,11 @@ function atualizarTudo() {
 }
 
 /* ===================== campo (jogo de botão) ===================== */
-const cv = $("campo"), cx = cv.getContext("2d"), K = cv.width / L;
+// o campo é desenhado em 1050×680 "pontos" (10 por metro) numa tela com o dobro de pixels: fica nítido e os botões podem ser menores
+const cv = $("campo"), cx = cv.getContext("2d"), K = 1050 / L; cx.scale(cv.width / 1050, cv.width / 1050);
+const RJ = 10.5;                                          // raio do botão do jogador (antes 15): jogadores menores, mais espaço no campo
 function desenharCampo() {
-  const W = cv.width, H = cv.height;
+  const W = 1050, H = 680;
   for (let i = 0; i < 12; i++) { cx.fillStyle = i % 2 ? "#2f7a3b" : "#2b7136"; cx.fillRect(i * W / 12, 0, W / 12 + 1, H); }
   cx.strokeStyle = "rgba(255,255,255,.85)"; cx.lineWidth = 3;
   const m = 8; cx.strokeRect(m, m, W - 2 * m, H - 2 * m);
@@ -1319,7 +1321,7 @@ function desenhar(agora) {
   if (J.juiz) {                                              // o árbitro (preto, borda verde-limão)
     const jp = J.juizP || J.juiz, x = (jp.x + (J.juiz.x - jp.x) * s) * K, y = (jp.y + (J.juiz.y - jp.y) * s) * K;
     // bonequinho com perninhas: as pernas balançam enquanto ele corre atrás do lance
-    cx.save(); cx.translate(x, y); cx.scale(1.45, 1.45); cx.translate(-x, -y);
+    cx.save(); cx.translate(x, y); cx.scale(1.05, 1.05); cx.translate(-x, -y);
     const andando = J.anim && !J.pausado && !(J.cenaAte > agora) && dist(jp, J.juiz) > .5, passo = andando ? Math.sin(agora / 90) : 0;
     cx.beginPath(); cx.ellipse(x + 2, y + 15, 10, 4, 0, 0, 7); cx.fillStyle = "rgba(0,0,0,.3)"; cx.fill();
     cx.lineCap = "round"; cx.lineWidth = 4.5; cx.strokeStyle = "#1b1b1b";
@@ -1331,33 +1333,33 @@ function desenhar(agora) {
     if (J.cenaAte > agora && J.cenas?.[0]) { const c = J.cenas[0][0]; const cor = c.includes("#e01e1e") ? "#e01e1e" : c.includes("#ffd200") ? "#ffd200" : null; if (cor) { cx.fillStyle = cor; cx.fillRect(x + 12, y - 40, 12, 16); cx.strokeStyle = "#000"; cx.lineWidth = 1; cx.strokeRect(x + 12, y - 40, 12, 16); } }
   }
   if (J.barreira && J.barreira.ate > agora) {               // barreira: faixa branca atrás dos jogadores e a etiqueta
-    const { a: ba, b: bb, n } = J.barreira; cx.save(); cx.lineCap = "round"; cx.lineWidth = 34; cx.strokeStyle = "rgba(255,255,255,.22)";
+    const { a: ba, b: bb, n } = J.barreira; cx.save(); cx.lineCap = "round"; cx.lineWidth = 24; cx.strokeStyle = "rgba(255,255,255,.22)";
     cx.beginPath(); cx.moveTo(ba.x * K, ba.y * K); cx.lineTo(bb.x * K, bb.y * K); cx.stroke();
-    cx.fillStyle = "#fff"; cx.font = "bold 13px system-ui"; cx.textAlign = "center"; cx.fillText(`🧱 Barreira (${n})`, (ba.x + bb.x) / 2 * K, Math.min(ba.y, bb.y) * K - 24); cx.restore();
+    cx.fillStyle = "#fff"; cx.font = "bold 11px system-ui"; cx.textAlign = "center"; cx.fillText(`🧱 Barreira (${n})`, (ba.x + bb.x) / 2 * K, Math.min(ba.y, bb.y) * K - 18); cx.restore();
   }
   if (J.linhaImp && J.linhaImp.ate > agora) {             // linha de impedimento (tracejada) na hora do lançamento
     cx.save(); cx.setLineDash([10, 8]); cx.lineWidth = 2.5; cx.strokeStyle = "rgba(255,230,80,.85)"; cx.beginPath(); cx.moveTo(J.linhaImp.x * K, 0); cx.lineTo(J.linhaImp.x * K, A * K); cx.stroke(); cx.restore();
   }
   const sv = J.subVis, es = sv ? lim((agora - sv.t0) / sv.dur, 0, 1) : 1, borda = sv && sv.sai.y < A / 2 ? -3 : A + 3;
-  const botao = (x, y, cor, cor2, num, alfa = 1) => { cx.globalAlpha = alfa; cx.beginPath(); cx.arc(x, y, 15, 0, 7); cx.fillStyle = cor; cx.fill(); cx.lineWidth = 4; cx.strokeStyle = cor2; cx.stroke();
-    cx.fillStyle = cor2; cx.font = "bold 14px system-ui"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText(num, x, y + 1); cx.globalAlpha = 1; };
+  const botao = (x, y, cor, cor2, num, alfa = 1) => { cx.globalAlpha = alfa; cx.beginPath(); cx.arc(x, y, RJ, 0, 7); cx.fillStyle = cor; cx.fill(); cx.lineWidth = 3; cx.strokeStyle = cor2; cx.stroke();
+    cx.fillStyle = cor2; cx.font = "bold 10px system-ui"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText(num, x, y + 1); cx.globalAlpha = 1; };
   if (sv && es < 1) {                                       // quem sai caminha até a lateral
     const k = Math.min(1, es * 1.4); botao(sv.sai.x * K, (sv.sai.y + (borda - sv.sai.y) * k) * K, sv.t.cor, sv.t.cor2, sv.sai.num, 1 - k * .6);
   }
   for (const t of [J.casa, J.fora]) for (const p of ativos(t)) {
     let x = (p.px + (p.x - p.px) * s) * K, y = (p.py + (p.y - p.py) * s) * K;
     if (sv && es < 1 && p === sv.entra) { const k = Math.max(0, es * 1.4 - .4); y = (borda + (p.py - borda) * k) * K; x = p.px * K; }
-    cx.beginPath(); cx.arc(x + 2, y + 3, 15, 0, 7); cx.fillStyle = "rgba(0,0,0,.3)"; cx.fill();
-    cx.beginPath(); cx.arc(x, y, 15, 0, 7); cx.fillStyle = p.papel === "GOL" ? "#e9c46a" : t.cor; cx.fill();
-    cx.lineWidth = 4; cx.strokeStyle = t.cor2; cx.stroke();
-    cx.fillStyle = p.papel === "GOL" ? "#222" : t.cor2; cx.font = "bold 14px system-ui"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText(p.num, x, y + 1);
-    if (p === J.dono) { cx.beginPath(); cx.arc(x, y, 20, 0, 7); cx.strokeStyle = "rgba(255,255,255,.7)"; cx.lineWidth = 2; cx.stroke(); }
-    const mt = t === J.meu && motivoTroca(p); if (mt) { cx.beginPath(); cx.arc(x + 12, y - 12, 5, 0, 7); cx.fillStyle = mt.tipo === "mal" ? "#ff5c5c" : "#ffc94a"; cx.fill(); }
+    cx.beginPath(); cx.arc(x + 1.5, y + 2, RJ, 0, 7); cx.fillStyle = "rgba(0,0,0,.3)"; cx.fill();
+    cx.beginPath(); cx.arc(x, y, RJ, 0, 7); cx.fillStyle = p.papel === "GOL" ? "#e9c46a" : t.cor; cx.fill();
+    cx.lineWidth = 3; cx.strokeStyle = t.cor2; cx.stroke();
+    cx.fillStyle = p.papel === "GOL" ? "#222" : t.cor2; cx.font = "bold 10px system-ui"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText(p.num, x, y + 1);
+    if (p === J.dono) { cx.beginPath(); cx.arc(x, y, RJ + 4, 0, 7); cx.strokeStyle = "rgba(255,255,255,.7)"; cx.lineWidth = 2; cx.stroke(); }
+    const mt = t === J.meu && motivoTroca(p); if (mt) { cx.beginPath(); cx.arc(x + 8.5, y - 8.5, 3.5, 0, 7); cx.fillStyle = mt.tipo === "mal" ? "#ff5c5c" : "#ffc94a"; cx.fill(); }
   }
   const a = J.anim, b = a ? { x: a.de.x + (a.para.x - a.de.x) * s, y: a.de.y + (a.para.y - a.de.y) * s } : J.bola;
   const alt = a ? Math.sin(Math.PI * e) * Math.min(8, dist(a.de, a.para) / 5) : 0;
-  cx.beginPath(); cx.arc(b.x * K + 3, b.y * K + 4, 6, 0, 7); cx.fillStyle = "rgba(0,0,0,.35)"; cx.fill();
-  cx.beginPath(); cx.arc(b.x * K, b.y * K - alt, 6 + alt * .25, 0, 7); cx.fillStyle = "#fff"; cx.fill(); cx.strokeStyle = "#222"; cx.lineWidth = 1.5; cx.stroke();
+  cx.beginPath(); cx.arc(b.x * K + 2, b.y * K + 3, 4.5, 0, 7); cx.fillStyle = "rgba(0,0,0,.35)"; cx.fill();
+  cx.beginPath(); cx.arc(b.x * K, b.y * K - alt, 4.5 + alt * .25, 0, 7); cx.fillStyle = "#fff"; cx.fill(); cx.strokeStyle = "#222"; cx.lineWidth = 1.5; cx.stroke();
 }
 requestAnimationFrame(desenhar);
 
