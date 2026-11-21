@@ -652,7 +652,7 @@ const carJog = j => carHtml(caracteristicas(j[0], j[1], j[2]));            // jo
 const LEGENDA_CAR = `<details class="dica"><summary>O que significam as características?</summary>${Object.values(CAR).map(([n, d]) => `<div><b>${n}</b>: ${d}</div>`).join("")}</details>`;
 
 function montarTime(base, formacao, estilo, lado) {
-  const pool = base.jogadores.map(([nome, pos, forca, idade], i) => ({ id: base.id + i, nome, pos, forca, idade, num: 0, pos2: posAprendidas(nome, pos) }));
+  const pool = base.jogadores.map(([nome, pos, forca, idade, fixa], i) => ({ id: base.id + i, nome, pos, forca, idade, num: 0, fixa: fixa || 0, pos2: posAprendidas(nome, pos) }));
   const slots = FORMACOES[formacao], titulares = [];
   const usados = new Set();
   // preenche primeiro as posições mais específicas (goleiro, laterais), depois as demais
@@ -665,6 +665,7 @@ function montarTime(base, formacao, estilo, lado) {
   }
   const reservas = pool.filter(p => !usados.has(p.id));
   let n = 1; [...titulares, ...reservas].forEach(p => { p.num = n++; });
+  for (const p of pool) if (p.fixa) { const o = pool.find(q => q !== p && q.num === p.fixa); if (o) o.num = p.num; p.num = p.fixa; }   // camisa fixa (ex.: 10 e 9)
   const ent = (p, slot) => ({ ...p, car: caracteristicas(p.nome, p.pos, p.forca), pers: persuasao(p.nome),
     hab: Object.fromEntries(caracteristicas(p.nome, p.pos, p.forca).map(k => [k, nivelHab(p.nome, p.pos, p.forca, k)])),
     fPos: Object.fromEntries(secundarias(p.nome, p.pos).map(x => [x.p, forcaSec(p.nome, p.pos, p.forca, x.p)])), papel: slot ? slot[0] : p.pos, bx: slot ? slot[1] : 0, by: slot ? slot[2] : 0, nota: 6.0, folego: 100, gols: 0, assist: 0, cartao: 0, fora: false, saiu: false, entrou: false, toques: 0, x: 0, y: 0, px: 0, py: 0 });
@@ -1697,7 +1698,7 @@ async function carregarPacote() {
   }
   aplicarEdicoes(); paises(); popular();
 }
-popular(); carregarPacote();
+popular(); setTimeout(carregarPacote, 0);   // depois de o script inteiro carregar (o editor e as camisas fixas são definidos mais abaixo)
 $("usar-logos").checked = USAR_LOGOS;
 $("usar-logos").onchange = () => { USAR_LOGOS = $("usar-logos").checked; try { localStorage.setItem("usar_logos", USAR_LOGOS ? "sim" : "nao"); } catch (e) {} };
 $("comecar").onclick = () => { if ($("sel-meu").value === $("sel-adv").value) return alert("Escolha dois times diferentes."); abrirEscalacao("pre"); };
@@ -2227,6 +2228,7 @@ $("m-salvo").onclick = () => {
   PAIS = s.pais || "Brasil"; paises();
   if (s.tecnicos.some(t => !timePorId(t.clube))) return alert("Um clube deste jogo salvo não está no pacote de times atual.");
   for (const [id, j] of Object.entries(s.elencos || {})) if (timePorId(id) && j) timePorId(id).jogadores = j;
+  aplicarCamisasFixas();
   delete s.elencos; C = s; ABA_TAB = null;
   if (!C.agenda) { C.agenda = Array.from({ length: Math.max(0, C.ligas.A.cal.length - C.rodada) }, () => ({ t: "L" })); C.data = 0; C.comps = {}; }   // save antigo: copas a partir da próxima temporada
   garantirExtras(); abrirCarreira();
@@ -2814,7 +2816,24 @@ $("m-sair").onclick = e => { e.preventDefault(); if (confirm("Sair do jogo?")) {
 /* ---------- editor ---------- */
 const CHAVE_ED = "tecnico_edicoes_v1";
 const lerEd = () => { try { return JSON.parse(localStorage.getItem(CHAVE_ED) || "{}"); } catch (e) { return {}; } };
-function aplicarEdicoes() { const ed = lerEd(); TIMES = TIMES.map(t => ed[t.id] ? { ...t, ...ed[t.id] } : t); }
+function aplicarEdicoes() { const ed = lerEd(); TIMES = TIMES.map(t => ed[t.id] ? { ...t, ...ed[t.id] } : t); aplicarCamisasFixas(); }
+// Camisas fixas: o jogador que veste o número leva este nome (e a camisa). Se o pacote não tiver os números reais,
+// a 10 vai para o melhor meia e a 9 para o melhor centroavante do elenco.
+var CAMISAS_FIXAS = { gremio: { 10: "Leomar", 9: "Baseggio" } };
+function aplicarCamisasFixas() {
+  const chave = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
+  for (const t of TIMES) {
+    const m = CAMISAS_FIXAS[chave(t.nome)]; if (!m || !t.jogadores?.length) continue;
+    const js = t.jogadores.map(j => [...j]), usados = new Set();
+    for (const [num, nome] of Object.entries(m).map(([n, x]) => [Number(n), x])) {
+      let alvo = js.find(j => j[0] === nome) || js.find(j => j[4] === num && !usados.has(j));
+      if (!alvo) { const pref = num === 9 ? ["CA", "PE", "PD"] : num === 10 ? ["MEI", "MC", "PE", "PD"] : ["MC"];
+        alvo = js.filter(j => pref.includes(j[1]) && !usados.has(j)).sort((a, b) => pref.indexOf(a[1]) - pref.indexOf(b[1]) || b[2] - a[2])[0]; }
+      if (alvo) { js.forEach(j => { if (j !== alvo && j[4] === num) j[4] = 0; }); alvo[0] = nome; alvo[4] = num; usados.add(alvo); }
+    }
+    t.jogadores = js;                                       // muda no próprio time (o jogo salvo e as ligas apontam para ele)
+  }
+}
 let ED = null;
 function abrirEditor() {
   paises();

@@ -181,7 +181,7 @@ function montarPacote() {
       const idade = p.idade || 18 + Math.floor(r() * 16), auge = idade >= 24 && idade <= 31 ? 3 : idade < 21 ? -4 : idade > 34 ? -3 : 0;
       const titular = p.num >= 1 && p.num <= 11 ? 2 : 0;
       const f = Math.round(Math.max(40, Math.min(92, base + auge + titular + (r() * 14 - 7))));
-      return [p.nome, ps, f, idade];
+      return p.num ? [p.nome, ps, f, idade, p.num] : [p.nome, ps, f, idade];   // 5º campo: número da camisa real
     });
     divs[t.div].push({ id: t.div.toLowerCase() + "_" + t.sigla.toLowerCase().replace(/[^a-z0-9]/g, "") + (t.div === "D" ? t.apiId : ""), nome: t.nome, curto: t.sigla.slice(0, 3), cor: t.cor, cor2: t.cor2, logo: t.logo || "", real: !!t.elenco?.length, jogadores });
   }
