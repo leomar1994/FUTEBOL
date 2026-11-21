@@ -47,6 +47,7 @@
   td.n { font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; width: 44px; border-radius: 6px; }
   tr.mal td.n { background: #5a1f1f; color: #ffd6d6; }
   tr.mal .aviso { color: var(--verm); font-size: 12px; }
+  tr.alerta td.n { background: #4a3d12; color: #ffe9a8; } tr.alerta .aviso { color: var(--amar); font-size: 12px; }
   tr.fora td { opacity: .45; }
   .folego { width: 54px; height: 6px; background: #2a352e; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
   .folego i { display: block; height: 100%; background: var(--verde); }
@@ -363,7 +364,7 @@
         <div class="tabs"><button id="tab-meu" class="on">Meu time</button><button id="tab-adv">Adversário</button></div>
         <div class="dica" id="subs-info"></div>
         <table><thead><tr><th>#</th><th>Jogador</th><th>Pos</th><th>Fôlego</th><th>Nota</th><th></th></tr></thead><tbody id="notas"></tbody></table>
-        <p class="dica">Nota parcial ao vivo (começa em 6,0). Em <b style="color:var(--verm)">vermelho</b>: nota baixa ou sem fôlego — talvez valha substituir. Toque em ⇄ para trocar.</p>
+        <p class="dica">Nota parcial ao vivo (começa em 6,0). Em <b style="color:var(--verm)">vermelho</b>: nota baixa — talvez valha substituir. Em <b style="color:var(--amar)">amarelo</b>: cansado ou pendurado com amarelo (pode estar jogando bem). Toque em ⇄ para trocar.</p>
       </div>
     </div>
   </section>
@@ -747,9 +748,9 @@ function intervalo() {
     atualizarTudo(); return;
   }
   narrar("apito", `<span class="m">45'</span> Fim do primeiro tempo: ${J.casa.curto} ${J.casa.gols} × ${J.fora.gols} ${J.fora.curto}.`);
-  const mal = ativos(J.meu).filter(malJogando);
+  const mal = ativos(J.meu).filter(malJogando), cans = ativos(J.meu).filter(p => motivoTroca(p)?.tipo === "alerta");
   const av = $("aviso-int");
-  av.innerHTML = `⏸ <b>Intervalo.</b> Veja as notas parciais e as estatísticas. ${mal.length ? `Em vermelho: ${mal.map(p => esc(p.nome)).join(", ")} — talvez valha substituir.` : "Ninguém do seu time está mal até aqui."} Quando quiser, toque em ▶ Continuar.`;
+  av.innerHTML = `⏸ <b>Intervalo.</b> Veja as notas parciais e as estatísticas. ${mal.length ? `Em vermelho (nota baixa): ${mal.map(p => esc(p.nome)).join(", ")} — talvez valha substituir.` : "Ninguém do seu time está mal até aqui."}${cans.length ? ` Em amarelo (cansado ou pendurado): ${cans.map(p => esc(p.nome)).join(", ")}.` : ""} Quando quiser, toque em ▶ Continuar.`;
   av.style.display = "block";
   // segundo tempo: o time que não saiu começa
   J.posse = J.fora; J.dono = meio(J.fora); J.bola = { x: L / 2, y: A / 2 }; posicionar(); congelarPos();
@@ -786,7 +787,15 @@ function substituir(t, sai, entra) {
   cenaSub(t, sai, entra);
   atualizarTudo(); return true;
 }
-const malJogando = p => !p.fora && (J.seg > 15 * 60) && (p.nota < (p.papel === "GOL" ? 5.0 : 5.7) || p.folego < 35 || p.cartao === 1 && J.seg > 60 * 60);
+// motivo para pensar numa troca: "mal" (nota baixa) é vermelho; "cansado" e "pendurado" são só alertas (amarelo), mesmo com nota alta
+function motivoTroca(p) {
+  if (p.fora || J.seg <= 15 * 60) return null;
+  if (p.nota < (p.papel === "GOL" ? 5.0 : 5.7)) return { tipo: "mal", txt: `📉 mal na partida (nota ${p.nota.toFixed(1)}) — pode ser substituído` };
+  if (p.folego < 35) return { tipo: "alerta", txt: `🥵 cansado (fôlego ${Math.round(p.folego)}%)${p.nota >= 7 ? " — está bem no jogo, mas pode cair de rendimento" : " — pode ser substituído"}` };
+  if (p.cartao === 1 && J.seg > 60 * 60) return { tipo: "alerta", txt: `🟨 pendurado: mais um amarelo e é expulso` };
+  return null;
+}
+const malJogando = p => motivoTroca(p)?.tipo === "mal";
 
 /* ===================== juiz: cartões e substituições (o jogo espera a cena) ===================== */
 function svgJuiz(mao, aponta) {                          // árbitro desenhado em SVG (camisa preta, braço erguido)
@@ -853,9 +862,9 @@ function atualizarTudo() {
   const t = J.aba === "meu" ? J.meu : J.adv, meu = t === J.meu;
   $("subs-info").textContent = meu ? `Substituições: ${J.meu.subs} de 5` : `${J.adv.nome} · ${J.adv.formacao}`;
   const linhas = [...t.jog, ...t.banco.filter(p => p.saiu)].map(p => {
-    const mal = malJogando(p) && !p.saiu, f = Math.round(p.folego), cor = f > 60 ? "var(--verde)" : f > 35 ? "var(--amar)" : "var(--verm)";
+    const mt = p.saiu ? null : motivoTroca(p), f = Math.round(p.folego), cor = f > 60 ? "var(--verde)" : f > 35 ? "var(--amar)" : "var(--verm)";
     const extra = (p.gols ? " ⚽".repeat(p.gols) : "") + (p.assist ? " 🅰" : "") + (p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : "") + (p.entrou ? " ⬆" : "") + (p.saiu ? " ⬇" : "");
-    return `<tr class="${mal ? "mal" : ""} ${p.fora ? "fora" : ""}"><td>${p.num}</td><td>${esc(p.nome)}${extra}${mal ? `<br><span class="aviso">📉 ${p.folego < 35 ? "sem fôlego" : "mal na partida"} — pode ser substituído</span>` : ""}</td><td>${p.papel}</td>
+    return `<tr class="${mt ? mt.tipo : ""} ${p.fora ? "fora" : ""}"><td>${p.num}</td><td>${esc(p.nome)}${extra}${mt ? `<br><span class="aviso">${mt.txt}</span>` : ""}</td><td>${p.papel}</td>
       <td><span class="folego"><i style="width:${f}%;background:${cor}"></i></span></td><td class="n">${p.nota.toFixed(1)}</td>
       <td>${meu && !J.replay && !p.fora && !J.fim && J.meu.subs < 5 ? `<button data-sub="${p.id}" title="Substituir">⇄</button>` : ""}</td></tr>`;
   });
@@ -920,7 +929,7 @@ function desenhar(agora) {
     cx.lineWidth = 4; cx.strokeStyle = t.cor2; cx.stroke();
     cx.fillStyle = p.papel === "GOL" ? "#222" : t.cor2; cx.font = "bold 14px system-ui"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText(p.num, x, y + 1);
     if (p === J.dono) { cx.beginPath(); cx.arc(x, y, 20, 0, 7); cx.strokeStyle = "rgba(255,255,255,.7)"; cx.lineWidth = 2; cx.stroke(); }
-    if (malJogando(p) && t === J.meu) { cx.beginPath(); cx.arc(x + 12, y - 12, 5, 0, 7); cx.fillStyle = "#ff5c5c"; cx.fill(); }
+    const mt = t === J.meu && motivoTroca(p); if (mt) { cx.beginPath(); cx.arc(x + 12, y - 12, 5, 0, 7); cx.fillStyle = mt.tipo === "mal" ? "#ff5c5c" : "#ffc94a"; cx.fill(); }
   }
   const a = J.anim, b = a ? { x: a.de.x + (a.para.x - a.de.x) * s, y: a.de.y + (a.para.y - a.de.y) * s } : J.bola;
   const alt = a ? Math.sin(Math.PI * e) * Math.min(8, dist(a.de, a.para) / 5) : 0;
