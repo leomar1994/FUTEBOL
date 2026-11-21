@@ -526,11 +526,12 @@ let TIMES = [
 ];
 
 /* Formações: posições-base no próprio campo (x: 0 = o seu gol, 1 = gol adversário; y: 0–1 de uma lateral à outra) */
+// cada posição das formações é um dos 24 lugares da grade da prancheta (ver LUGARES): o botão fica dentro do lugar
 const FORMACOES = {
-  "4-4-2":   [["GOL",.05,.5],["LD",.24,.86],["ZAG",.2,.62],["ZAG",.2,.38],["LE",.24,.14],["PD",.47,.84],["MC",.42,.6],["VOL",.4,.4],["PE",.47,.16],["CA",.7,.6],["CA",.7,.4]],
-  "4-3-3":   [["GOL",.05,.5],["LD",.24,.86],["ZAG",.2,.62],["ZAG",.2,.38],["LE",.24,.14],["MC",.42,.7],["VOL",.37,.5],["MEI",.44,.3],["PD",.68,.85],["CA",.73,.5],["PE",.68,.15]],
-  "4-2-3-1": [["GOL",.05,.5],["LD",.24,.86],["ZAG",.2,.62],["ZAG",.2,.38],["LE",.24,.14],["VOL",.36,.6],["VOL",.36,.4],["PD",.56,.84],["MEI",.55,.5],["PE",.56,.16],["CA",.74,.5]],
-  "3-5-2":   [["GOL",.05,.5],["ZAG",.2,.75],["ZAG",.18,.5],["ZAG",.2,.25],["LD",.46,.9],["MC",.4,.67],["VOL",.35,.5],["MEI",.42,.33],["LE",.46,.1],["CA",.7,.6],["CA",.7,.4]]
+  "4-4-2":   [["GOL",.07,.5],["LD",.2,.9],["ZAG",.2,.7],["ZAG",.2,.3],["LE",.2,.1],["PD",.65,.9],["MC",.5,.7],["VOL",.35,.3],["PE",.65,.1],["CA",.8,.7],["CA",.8,.3]],
+  "4-3-3":   [["GOL",.07,.5],["LD",.2,.9],["ZAG",.2,.7],["ZAG",.2,.3],["LE",.2,.1],["MC",.5,.7],["VOL",.35,.5],["MEI",.65,.3],["PD",.8,.9],["CA",.8,.5],["PE",.8,.1]],
+  "4-2-3-1": [["GOL",.07,.5],["LD",.2,.9],["ZAG",.2,.7],["ZAG",.2,.3],["LE",.2,.1],["VOL",.35,.7],["VOL",.35,.3],["PD",.65,.9],["MEI",.65,.5],["PE",.65,.1],["CA",.8,.5]],
+  "3-5-2":   [["GOL",.07,.5],["ZAG",.2,.7],["ZAG",.2,.5],["ZAG",.2,.3],["LD",.35,.9],["MC",.5,.7],["VOL",.35,.5],["MEI",.65,.3],["LE",.35,.1],["CA",.8,.7],["CA",.8,.3]]
 };
 const PARECE = { GOL: ["GOL"], ZAG: ["ZAG","VOL","LD","LE"], LD: ["LD","ZAG","PD","VOL"], LE: ["LE","ZAG","PE","VOL"], VOL: ["VOL","MC","ZAG"], MC: ["MC","VOL","MEI"], MEI: ["MEI","MC","PE","PD"], PE: ["PE","PD","MEI","CA"], PD: ["PD","PE","MEI","CA"], CA: ["CA","PE","PD","MEI"] };
 const SETOR = { GOL: 0, ZAG: 1, LD: 1, LE: 1, VOL: 2, MC: 2, MEI: 2, PE: 3, PD: 3, CA: 3 };
@@ -1429,12 +1430,23 @@ requestAnimationFrame(desenhar);
 /* ===================== ESCALAÇÃO: prancheta com arrastar e soltar ===================== */
 let ESC_TIME = null, ESC_MODO = "pre";   // "pre" = antes da partida · "jogo" = durante (trocar com reserva conta como substituição)
 // lugares do campo (como uma grade): cada um tem o nome da posição; o botão solto num lugar vazio encaixa no mais perto
+// 24 lugares: goleiro + 5 linhas (zaga 5 · volantes/alas 5 · meio 3 · meias/pontas 5 · ataque 5), como numa grade
 const LUGARES = [[.07, .5, "GOL"],
-  ...[[.08, "LE"], [.29, "ZAG"], [.5, "ZAG"], [.71, "ZAG"], [.92, "LD"]].map(([y, r]) => [.2, y, r]),
-  ...[[.08, "LE"], [.29, "VOL"], [.5, "VOL"], [.71, "VOL"], [.92, "LD"]].map(([y, r]) => [.36, y, r]),
-  ...[[.1, "PE"], [.3, "MC"], [.5, "MC"], [.7, "MC"], [.9, "PD"]].map(([y, r]) => [.51, y, r]),
-  ...[[.12, "PE"], [.31, "MEI"], [.5, "MEI"], [.69, "MEI"], [.88, "PD"]].map(([y, r]) => [.66, y, r]),
-  ...[[.14, "PE"], [.33, "CA"], [.5, "CA"], [.67, "CA"], [.86, "PD"]].map(([y, r]) => [.82, y, r])];
+  ...[[.1, "LE"], [.3, "ZAG"], [.5, "ZAG"], [.7, "ZAG"], [.9, "LD"]].map(([y, r]) => [.2, y, r]),
+  ...[[.1, "LE"], [.3, "VOL"], [.5, "VOL"], [.7, "VOL"], [.9, "LD"]].map(([y, r]) => [.35, y, r]),
+  ...[[.3, "MC"], [.5, "MC"], [.7, "MC"]].map(([y, r]) => [.5, y, r]),
+  ...[[.1, "PE"], [.3, "MEI"], [.5, "MEI"], [.7, "MEI"], [.9, "PD"]].map(([y, r]) => [.65, y, r]),
+  ...[[.1, "PE"], [.3, "CA"], [.5, "CA"], [.7, "CA"], [.9, "PD"]].map(([y, r]) => [.8, y, r])];
+const noLugar = (p, l) => Math.abs(p.bx - l[0]) < .03 && Math.abs(p.by - l[1]) < .04;
+function encaixarNaGrade(t) {                            // táticas antigas: cada botão vai para o lugar livre mais perto (de preferência o da mesma posição)
+  const usados = new Set(), dist = (p, l) => Math.hypot(p.bx - l[0], (p.by - l[1]) * .65);
+  const vivos = t.jog.filter(p => !p.fora);
+  for (const p of vivos) { const l = LUGARES.find(l => noLugar(p, l)); if (l && !usados.has(l) && (l[2] === "GOL") === (p.papel === "GOL")) { usados.add(l); p._ok = 1; } }
+  for (const p of vivos) { if (p._ok) { delete p._ok; continue; }
+    const gol = p.papel === "GOL", livres = LUGARES.filter(l => !usados.has(l) && (l[2] === "GOL") === gol);
+    const l = livres.sort((x, y) => (x[2] !== p.papel) - (y[2] !== p.papel) || dist(p, x) - dist(p, y)).find(x => x[2] === p.papel && dist(p, x) < .2) || livres.sort((x, y) => dist(p, x) - dist(p, y))[0];
+    if (l) { usados.add(l); Object.assign(p, { bx: l[0], by: l[1], papel: l[2] }); } }
+}
 function papelDaPos(bx, by, gol) {
   if (gol) return "GOL";
   if (bx < .3) return by < .25 ? "LE" : by > .75 ? "LD" : "ZAG";
@@ -1462,7 +1474,7 @@ function abrirEscalacao(modo) {
     const base = TIMES.find(x => x.id === $("sel-meu").value);
     if (!ESC_TIME || ESC_TIME.base !== base) { ESC_TIME = montarTime(base, $("sel-form").value, $("sel-estilo").value, "casa"); if (MODO_CARREIRA && C && T()?.tatica) aplicarTatica(ESC_TIME, T().tatica); if (MODO_CARREIRA && C) ajustarFisico(ESC_TIME, base.id); }
   }
-  const t = timeEsc();
+  const t = timeEsc(); encaixarNaGrade(t);
   $("esc-form").innerHTML = [...Object.keys(FORMACOES), ...(FORMACOES[t.formacao] ? [] : [t.formacao])].map(f => `<option>${f}</option>`).join("");
   $("esc-form").value = t.formacao; $("esc-estilo").value = t.estilo; $("esc-marcacao").value = t.marcacao || "normal"; $("esc-jogada").value = t.jogada || "misto"; $("esc-linha").value = t.linha || "normal";
   $("esc-tit").textContent = `📋 Escalação — ${t.nome}`;
@@ -1543,7 +1555,7 @@ function soltarArrasto(e) {
   if (q && q !== a.p) trocarNaEscalacao(a.p, q);
   else if (campo && !q && t.jog.includes(a.p)) {            // soltou num espaço vazio: muda a posição do botão
     const r = $("prancheta").getBoundingClientRect(), by = lim((e.clientX - r.left) / r.width, .05, .95), bx = 1 - (e.clientY - r.top) / r.height;
-    const gol = a.p.papel === "GOL", ocupado = l => t.jog.some(q => q !== a.p && !q.fora && Math.abs(q.bx - l[0]) < .05 && Math.abs(q.by - l[1]) < .07);
+    const gol = a.p.papel === "GOL", ocupado = l => t.jog.some(q => q !== a.p && !q.fora && noLugar(q, l));
     const lugar = LUGARES.filter(l => (l[2] === "GOL") === gol && !ocupado(l)).sort((x, y) => Math.hypot(x[0] - bx, (x[1] - by) * .65) - Math.hypot(y[0] - bx, (y[1] - by) * .65))[0];
     if (lugar) { a.p.bx = lugar[0]; a.p.by = lugar[1]; a.p.papel = lugar[2]; }
     else { a.p.bx = gol ? lim(bx, .02, .12) : lim(bx, .14, .9); a.p.by = gol ? lim(by, .35, .65) : by; a.p.papel = papelDaPos(a.p.bx, a.p.by, gol); }
