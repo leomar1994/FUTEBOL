@@ -37,6 +37,7 @@ create table if not exists public.liga_taticas (
 );
 -- marcação (leve/normal/pesado/muito pesado) e lado das jogadas (meio/laterais/misto)
 alter table public.liga_taticas add column if not exists marcacao text not null default 'normal', add column if not exists jogada text not null default 'misto';
+alter table public.liga_taticas add column if not exists linha text not null default 'normal';   -- linha de defesa: normal | alta
 do $$ begin alter table public.liga_taticas add constraint liga_taticas_marc check (marcacao in ('leve','normal','pesado','mpesado') and jogada in ('misto','meio','lados')); exception when others then null; end $$;
 -- marcação mais pesada tira um pouco dos gols do rival (e dá mais cartões no jogo animado); leve dá um pouco mais
 create or replace function public.liga_fator_marcacao(p_clube text) returns numeric language sql stable as $$
