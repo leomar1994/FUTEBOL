@@ -371,7 +371,7 @@
         <div class="tabs"><button id="tab-meu" class="on">Meu time</button><button id="tab-adv">Adversário</button></div>
         <div class="dica" id="subs-info"></div>
         <table><thead><tr><th>#</th><th>Jogador</th><th>Pos</th><th>Fôlego</th><th>Nota</th><th></th></tr></thead><tbody id="notas"></tbody></table>
-        <p class="dica">Nota parcial ao vivo (começa em 6,0). Em <b style="color:var(--verm)">vermelho</b>: nota baixa — talvez valha substituir. Em <b style="color:var(--amar)">amarelo</b>: cansado ou pendurado com amarelo (pode estar jogando bem). Toque em ⇄ para trocar.</p>
+        <p class="dica">Nota parcial ao vivo (começa em 6,0). Em <b style="color:var(--verm)">vermelho</b>: nota baixa — talvez valha substituir. Em <b style="color:var(--amar)">amarelo</b>: cansado ou pendurado com amarelo (pode estar jogando bem). Toque em ⇄ para trocar: o jogo não para e a troca entra na próxima bola parada (falta, lateral, tiro de meta, escanteio ou gol).</p>
       </div>
     </div>
   </section>
@@ -626,7 +626,7 @@ function proximoLance() {
       const fundo = avanco > .2 && prog(t, alvo.x) > .8, fora = fundo ? { x: xDe(t, 1) + (t.lado === "casa" ? 1 : -1), y: lim(alvo.y, 6, A - 6) } : { x: lim(alvo.x + entre(-5, 5), 2, L - 2), y: alvo.y < A / 2 ? -1 : A + 1 };
       const repor = fundo ? { x: xDe(o, .055), y: A / 2 } : { x: fora.x, y: fora.y < 0 ? .5 : A - .5 };
       texto = fundo ? `Lançamento longo demais de ${d.nome}: tiro de meta.` : `Passe de ${d.nome} sai pela lateral. Lateral para o ${o.curto}.`;
-      return fazerLance(dur, de, () => { trocaPosse(o, fundo ? goleiro(o) : perto(o, repor), repor); J.seg += fundo ? 12 : 8; posicionar(); congelarPos(); }, texto, "", fora);
+      return fazerLance(dur, de, () => { trocaPosse(o, fundo ? goleiro(o) : perto(o, repor), repor); J.seg += fundo ? 12 : 8; bolaParada(fundo ? "meta" : "lateral"); posicionar(); congelarPos(); }, texto, "", fora);
     }
   } else if (acao === "drible" && (!defensor || dist(defensor, d) > 11)) {   // ninguém perto: avança conduzindo
     dur = 5;
@@ -672,6 +672,7 @@ function falta(t, o, vit, fal) {
   if (naArea && rnd() > .14) { naArea = false; J.bola = { x: xDe(t, entre(.78, .82)), y: J.bola.y }; pb = prog(t, J.bola.x); }   // quase sempre o contato é na entrada da área
   narrar("", minutoTxt() + (naArea ? `${fal.nome} derruba ${vit.nome} dentro da área!` : `Falta de ${fal.nome} em ${vit.nome}.`));
   if (rnd() < (naArea ? .5 : marc(o).cartao) * (tem(fal, "ind") ? 1.6 : 1)) cartao(o, fal);
+  bolaParada("falta");
   if (naArea) return penalti(t, o);
   const cob = cobrador(t, "fal"), de = { ...J.bola };
   J.posse = t; J.dono = cob; J.passeDe = null;
@@ -712,7 +713,7 @@ function chute(t, o, autor, tipo) {
     nota(autor, -.05);
     const fora = { x: xDe(t, 1) + (t.lado === "casa" ? 3 : -3), y: A / 2 + sorteia([-1, 1]) * entre(5, 12) };
     narrar("", minutoTxt() + intro + " " + (tipo === "penalti" ? sorteia(["Isolou! Pênalti desperdiçado.", "Na trave! Pênalti perdido!", "Para fora! Que chance perdida."]) : tipo === "falta" ? sorteia(["Por cima da barreira e do gol.", "Bate na barreira.", "Raspando a trave!"]) : sorteia(["Para fora.", "Por cima do gol.", "Tirou tinta da trave!", "Longe do alvo."])));
-    return fazerLance(4, de, () => { trocaPosse(o, gk, { x: xDe(o, .06), y: A / 2 }); J.seg += 15; posicionar(); congelarPos(); }, "", "", fora);
+    return fazerLance(4, de, () => { trocaPosse(o, gk, { x: xDe(o, .06), y: A / 2 }); J.seg += 15; bolaParada("meta"); posicionar(); congelarPos(); }, "", "", fora);
   }
   t.st.alvo++;
   if (rnd() < pGol) {
@@ -724,7 +725,7 @@ function chute(t, o, autor, tipo) {
     const mergulho = () => { gk.x = xDe(o, .02); gk.y = lim(A / 2 - (alvoGol.y - A / 2) * 2.2, A / 2 - 5, A / 2 + 5); };   // goleiro pula para o outro lado
     const r_ = fazerLance(8, de, () => {
       J.seg += 25; J.aguardando = true;
-      J.retomar = () => { clearTimeout(J.tGol); esconderGol(); J.aguardando = false; J.retomar = null;
+      J.retomar = () => { clearTimeout(J.tGol); esconderGol(); J.aguardando = false; J.retomar = null; bolaParada("gol");
         J.bola = { x: L / 2, y: A / 2 }; J.posse = o; J.dono = meio(o); posicionar(); congelarPos(); atualizarTudo();
         if (!J.pausado && !J.rapido) proximoLance(); };
       if (J.rapido) return;
@@ -745,6 +746,7 @@ function chute(t, o, autor, tipo) {
   fazerLance(4, de, () => { trocaPosse(o, gk, { x: xDe(o, .05), y: A / 2 }); J.seg += 6; posicionar(); congelarPos(); }, "", "", alvoGol); voa();
 }
 function escanteio(t, o) {
+  bolaParada("escanteio");
   J.bola = { x: xDe(t, 1) - (t.lado === "casa" ? .5 : -.5), y: sorteia([.5, A - .5]) };
   const cob = ativos(t).filter(p => SETOR[p.papel] >= 2).sort((a, b) => b.forca - a.forca)[0] || J.dono;
   J.dono = cob; posicionar(); congelarPos();
@@ -782,11 +784,11 @@ function fimDoLance() {
   // apito do intervalo e do fim
   if (J.tempo === 1 && J.seg >= (45 + J.acrescimo[0]) * 60) return intervalo();
   if (J.tempo === 2 && J.seg >= (90 + J.acrescimo[1]) * 60) return encerrar();
-  if (J.adv && J.tempo === 2) { iaSubstitui(J.adv); if (J.replay) iaSubstitui(J.meu); }
   atualizarTudo(); proximoLance();
 }
 function intervalo() {
   J.tempo = 2; J.seg = 45 * 60; J.pausado = true; J.intervalo = true;
+  bolaParada("intervalo");
   if (J.aoVivo) {                                            // ao vivo: o 2º tempo começa sozinho depois de 1 minuto
     narrar("apito", `<span class="m">45'</span> Fim do primeiro tempo: ${J.casa.curto} ${J.casa.gols} × ${J.fora.gols} ${J.fora.curto}.`);
     $("aviso-int").innerHTML = "⏸ <b>Intervalo.</b> O segundo tempo começa em 1 minuto (jogo ao vivo)."; $("aviso-int").style.display = "block";
@@ -813,6 +815,23 @@ function encerrar() {
   $("nova").textContent = J.replay || J.amistosoOn ? "↩ Voltar à liga" : J.carreira ? "↩ Voltar à temporada" : "↩ Nova partida";
   if (J.replay) rnd = Math.random;
   atualizarTudo();
+}
+/* substituição pedida espera a bola parar: falta, lateral, tiro de meta, escanteio, gol ou intervalo (como na vida real) */
+function pedirSub(t, sai, entra) {
+  t.pend ||= [];
+  if (t.pend.some(x => x.sai === sai || x.entra === entra)) return false;
+  if (t.subs + t.pend.length >= 5) { if (t === J.meu) alert("Você já usou (ou pediu) as 5 substituições."); return false; }
+  t.pend.push({ sai, entra });
+  if (t === J.meu) narrar("", `${minutoTxt()}⏳ ${t.curto} prepara a troca: sai ${sai.nome}, entra ${entra.nome}. Entra na próxima bola parada.`);
+  atualizarTudo(); return true;
+}
+function bolaParada(motivo) {
+  if (!J || J.fim) return;
+  if (J.adv && (J.tempo === 2 || motivo === "intervalo")) { iaSubstitui(J.adv); if (J.replay) iaSubstitui(J.meu); }
+  for (const t of [J.casa, J.fora]) {
+    const l = t.pend || []; t.pend = [];
+    for (const { sai, entra } of l) if (!sai.fora && !entra.saiu && !entra.entrou && t.jog.includes(sai)) substituir(t, sai, entra);
+  }
 }
 function iaSubstitui(t) {                                  // o técnico adversário troca quem está mal ou cansado
   const m = minuto(); if (t.subs >= 5 || m < 58) return;
@@ -906,13 +925,15 @@ function atualizarTudo() {
   $("campo-placar").innerHTML = `${escudo(J.casa)}${esc(J.casa.curto)} ${J.casa.gols} × ${J.fora.gols} ${esc(J.fora.curto)}${escudo(J.fora)} · ${$("minuto").textContent}`;
   // notas
   const t = J.aba === "meu" ? J.meu : J.adv, meu = t === J.meu;
-  $("subs-info").textContent = meu ? `Substituições: ${J.meu.subs} de 5` : `${J.adv.nome} · ${J.adv.formacao}`;
+  $("subs-info").textContent = meu ? `Substituições: ${J.meu.subs} de 5${J.meu.pend?.length ? ` · ${J.meu.pend.length} aguardando a bola parar` : ""}` : `${J.adv.nome} · ${J.adv.formacao}`;
   const linhas = [...t.jog, ...t.banco.filter(p => p.saiu)].map(p => {
     const mt = p.saiu ? null : motivoTroca(p), f = Math.round(p.folego), cor = f > 60 ? "var(--verde)" : f > 35 ? "var(--amar)" : "var(--verm)";
     const extra = (p.gols ? " ⚽".repeat(p.gols) : "") + (p.assist ? " 🅰" : "") + (p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : "") + (p.entrou ? " ⬆" : "") + (p.saiu ? " ⬇" : "");
     return `<tr class="${mt ? mt.tipo : ""} ${p.fora ? "fora" : ""}"><td>${p.num}</td><td>${esc(p.nome)}${extra} ${carHtml(p.car)}${mt ? `<br><span class="aviso">${mt.txt}</span>` : ""}</td><td>${p.papel}</td>
       <td><span class="folego"><i style="width:${f}%;background:${cor}"></i></span></td><td class="n">${p.nota.toFixed(1)}</td>
-      <td>${meu && !J.replay && !p.fora && !J.fim && J.meu.subs < 5 ? `<button data-sub="${p.id}" title="Substituir">⇄</button>` : ""}</td></tr>`;
+      <td>${(() => { const pd = meu && (J.meu.pend || []).find(x => x.sai === p);
+        if (pd) return `<span class="dica" title="Sai na próxima bola parada">⏳ ${esc(pd.entra.nome)}</span> <button data-cancsub="${p.id}" title="Desistir da troca" style="padding:1px 6px">✖</button>`;
+        return meu && !J.replay && !p.fora && !J.fim && J.meu.subs + (J.meu.pend || []).length < 5 ? `<button data-sub="${p.id}" title="Substituir (na próxima bola parada)">⇄</button>` : ""; })()}</td></tr>`;
   });
   $("notas").innerHTML = linhas.join("");
   // estatísticas
@@ -1019,7 +1040,7 @@ function abrirEscalacao(modo) {
   if (modo === "pre") {
     const base = TIMES.find(x => x.id === $("sel-meu").value);
     if (!ESC_TIME || ESC_TIME.base !== base) { ESC_TIME = montarTime(base, $("sel-form").value, $("sel-estilo").value, "casa"); if (MODO_CARREIRA && C && T()?.tatica) aplicarTatica(ESC_TIME, T().tatica); }
-  } else { if (!J.pausado) alternarPausa(); }
+  }
   const t = timeEsc();
   $("esc-form").innerHTML = [...Object.keys(FORMACOES), ...(FORMACOES[t.formacao] ? [] : [t.formacao])].map(f => `<option>${f}</option>`).join("");
   $("esc-form").value = t.formacao; $("esc-estilo").value = t.estilo; $("esc-marcacao").value = t.marcacao || "normal"; $("esc-jogada").value = t.jogada || "misto";
@@ -1027,7 +1048,7 @@ function abrirEscalacao(modo) {
   $("esc-ok").textContent = modo === "pre" ? "▶ Começar partida" : "✔ Voltar ao jogo";
   $("esc-cancelar").hidden = modo !== "pre";
   $("esc-ajuda").textContent = modo === "pre" ? "Arraste os botões no campo para mudar as posições. Arraste um jogador da lista para cima de um botão (ou um botão para cima de outro) para trocar quem joga."
-    : `Durante o jogo: arraste os botões para mudar posições e a formação. Trocar um titular por um reserva conta como substituição (${t.subs} de 5 usadas).`;
+    : `O jogo continua rolando. Formação, estilo, marcação e posições mudam na hora. Trocar um titular por um reserva pede a substituição: ela acontece na próxima bola parada (falta, lateral, tiro de meta, escanteio ou gol). ${t.subs} de 5 usadas${t.pend?.length ? `, ${t.pend.length} aguardando` : ""}.`;
   if (ESC_SALVAR) { $("esc-ok").textContent = "✔ Salvar escalação"; $("esc-ajuda").textContent = "Monte o time para o próximo jogo. Arraste os botões para mudar as posições; arraste um jogador da lista para cima de um botão para trocar quem joga. A escalação salva vale para jogar a partida e também para simular."; }
   desenharEscalacao(); $("m-esc").classList.add("on");
 }
@@ -1054,7 +1075,7 @@ function trocarNaEscalacao(a, b) {                        // a e b: jogadores (t
   }
   const tit = ia >= 0 ? a : b, res = ia >= 0 ? b : a;
   if (t.jog.indexOf(tit) < 0 || t.banco.indexOf(res) < 0) return;
-  if (ESC_MODO === "jogo") { if (t.subs >= 5) return alert("Você já fez as 5 substituições."); substituir(t, tit, res); return; }
+  if (ESC_MODO === "jogo") { if (pedirSub(t, tit, res)) desenharEscalacao(); return; }
   const i = t.jog.indexOf(tit), j = t.banco.indexOf(res);
   Object.assign(res, { papel: tit.papel, bx: tit.bx, by: tit.by }); t.jog[i] = res; t.banco[j] = tit;
 }
@@ -1168,9 +1189,8 @@ function correrAte(parar) {                               // simula sem animaç�
   let guarda = 0;
   while (!J.fim && guarda++ < 5000) { if (J.anim) { const a = J.anim; J.anim = null; if (a.depois) { a.depois(); if (J.retomar) J.retomar(); if (J.anim) continue; } }
     if (parar()) break;
-    if (J.tempo === 1 && J.seg >= (45 + J.acrescimo[0]) * 60) { J.tempo = 2; J.seg = 45 * 60; J.posse = J.fora; J.dono = meio(J.fora); J.bola = { x: L / 2, y: A / 2 }; narrar("apito", `<span class="m">45'</span> Intervalo: ${J.casa.curto} ${J.casa.gols} × ${J.fora.gols} ${J.fora.curto}.`); }
+    if (J.tempo === 1 && J.seg >= (45 + J.acrescimo[0]) * 60) { J.tempo = 2; J.seg = 45 * 60; J.posse = J.fora; J.dono = meio(J.fora); J.bola = { x: L / 2, y: A / 2 }; narrar("apito", `<span class="m">45'</span> Intervalo: ${J.casa.curto} ${J.casa.gols} × ${J.fora.gols} ${J.fora.curto}.`); bolaParada("intervalo"); }
     if (J.tempo === 2 && J.seg >= (90 + J.acrescimo[1]) * 60) { encerrar(); break; }
-    if (J.tempo === 2) { iaSubstitui(J.adv); if (J.replay) iaSubstitui(J.meu); }
     proximoLance(); }
 }
 /* jogo da liga online AO VIVO: todo mundo vê o mesmo minuto (pelo relógio do início) */
@@ -1198,13 +1218,13 @@ let saindo = null;
 $("notas").onclick = e => {
   const b = e.target.closest("[data-sub]"); if (!b || !J) return;
   saindo = J.meu.jog.find(p => p.id === b.dataset.sub); if (!saindo) return;
-  if (!J.pausado) alternarPausa();
   $("subs-tit").textContent = `Sai ${saindo.nome} (${saindo.papel}, nota ${saindo.nota.toFixed(1)})`;
-  const opc = J.meu.banco.filter(p => !p.saiu).sort((a, b) => (PARECE[saindo.papel].indexOf(a.pos) < 0 ? 1 : 0) - (PARECE[saindo.papel].indexOf(b.pos) < 0 ? 1 : 0) || b.forca - a.forca);
+  const opc = J.meu.banco.filter(p => !p.saiu && !(J.meu.pend || []).some(x => x.entra === p)).sort((a, b) => (PARECE[saindo.papel].indexOf(a.pos) < 0 ? 1 : 0) - (PARECE[saindo.papel].indexOf(b.pos) < 0 ? 1 : 0) || b.forca - a.forca);
   $("subs-lista").innerHTML = opc.map(p => `<button data-entra="${p.id}">${PARECE[saindo.papel].includes(p.pos) ? "✅" : "▫"} <b>${esc(p.nome)}</b> · ${p.pos} · força ${p.forca}</button>`).join("") || "<p class='dica'>Sem reservas.</p>";
   $("subs").classList.add("on");
 };
-$("subs-lista").onclick = e => { const b = e.target.closest("[data-entra]"); if (!b) return; const entra = J.meu.banco.find(p => p.id === b.dataset.entra); if (entra && saindo) substituir(J.meu, saindo, entra); $("subs").classList.remove("on"); };
+$("subs-lista").onclick = e => { const b = e.target.closest("[data-entra]"); if (!b) return; const entra = J.meu.banco.find(p => p.id === b.dataset.entra); if (entra && saindo) pedirSub(J.meu, saindo, entra); $("subs").classList.remove("on"); };
+$("notas").addEventListener("click", e => { const b = e.target.closest("[data-cancsub]"); if (!b || !J) return; J.meu.pend = (J.meu.pend || []).filter(x => x.sai.id !== b.dataset.cancsub); narrar("", `${minutoTxt()}↩ ${J.meu.curto} desiste da troca.`); atualizarTudo(); });
 $("subs-cancelar").onclick = () => $("subs").classList.remove("on");
 
 /* =====================================================================
