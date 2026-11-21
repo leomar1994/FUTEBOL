@@ -640,21 +640,24 @@ const meio = t => ativos(t).filter(p => SETOR[p.papel] >= 2).sort((a, b) => b.bx
 const goleiro = t => ativos(t).find(p => p.papel === "GOL") || ativos(t)[0];
 
 /* Coordenadas: o time da casa ataca para a direita (x crescente). progresso = 0 no próprio gol, 1 no gol rival. */
-const prog = (t, x) => t.lado === "casa" ? x / L : 1 - x / L;
-const xDe = (t, p) => t.lado === "casa" ? p * L : (1 - p) * L;
+// No 2º tempo os times trocam de lado: quem atacava para a direita passa a atacar para a esquerda.
+const praDireita = t => (t?.lado === "casa") === ((J?.tempo || 1) !== 2);
+const sentido = t => praDireita(t) ? 1 : -1;
+const prog = (t, x) => praDireita(t) ? x / L : 1 - x / L;
+const xDe = (t, p) => praDireita(t) ? p * L : (1 - p) * L;
 function posicionar() {                                   // posição de cada botão conforme a formação e onde está a bola
   for (const t of [J.casa, J.fora]) {
     const atacando = J.posse === t, pb = prog(t, J.bola.x), ajuste = t.estilo === "of" ? .05 : t.estilo === "de" ? -.06 : 0;
     const desloc = (pb - .5) * (atacando ? .55 : .45) + (atacando ? .08 : -.04) + ajuste;
     for (const p of ativos(t)) {
       let px = p.papel === "GOL" ? lim(p.bx + desloc * .12, .02, .16) : lim(p.bx + desloc, .04, .95);
-      let py = p.by + ((t.lado === "casa" ? J.bola.y / A : 1 - J.bola.y / A) - p.by) * (atacando ? .12 : .22);
-      const yy = t.lado === "casa" ? py : 1 - py;
+      let py = p.by + ((praDireita(t) ? J.bola.y / A : 1 - J.bola.y / A) - p.by) * (atacando ? .12 : .22);
+      const yy = praDireita(t) ? py : 1 - py;
       p.x = xDe(t, px) + entre(-1.2, 1.2); p.y = lim(yy * A + entre(-1.2, 1.2), 2, A - 2);
     }
   }
   if (J.dono && !J.dono.fora) { J.dono.x = J.bola.x; J.dono.y = J.bola.y; }
-  const ataca = J.posse?.lado === "casa" ? 1 : -1;            // juiz acompanha o lance um pouco atrás e de lado
+  const ataca = sentido(J.posse);            // juiz acompanha o lance um pouco atrás e de lado
   J.juiz = { x: lim(J.bola.x - ataca * 9, 4, L - 4), y: lim(J.bola.y + (J.bola.y < A / 2 ? 9 : -9), 4, A - 4) };
 }
 function congelarPos() { for (const t of [J.casa, J.fora]) for (const p of ativos(t)) { p.px = p.x; p.py = p.y; } if (J.juiz) J.juizP = { ...J.juiz }; }
@@ -695,11 +698,32 @@ function proximoLance() {
   const of = t.estilo === "of" ? 1.25 : t.estilo === "de" ? .75 : 1;
   let dur = 5, de = { x: J.bola.x, y: J.bola.y }, texto = "", cls = "";
   d.toques++;
+  // ===== perto do gol: decide pelas habilidades (antes tocava para trás ou para fora mesmo na cara do gol) =====
+  const naArea = pb > (L - 16.5) / L && centro < 20, dm = defensor ? dist(defensor, d) : 99, livre = dm > 8;
+  const entreEleEGol = ativos(o).filter(p => p.papel !== "GOL" && prog(t, p.x) > pb && Math.abs(p.y - J.bola.y) < 6).length;
+  if (d.papel !== "GOL" && naArea) {
+    if (livre && !entreEleEGol) {                           // sozinho na área / cara a cara: finaliza (quem tem finalização quase sempre)
+      if (rnd() < (tem(d, "fin") ? .95 : .8)) return fazerLance(4, de, () => chute(t, o, d, "cara"), sorteia([`${d.nome} fica cara a cara com o goleiro...`, `${d.nome} aparece livre na área...`, `${d.nome} domina sozinho na área...`]));
+    } else {                                                // marcado dentro da área
+      const vaiDriblar = tem(d, "dri") && rnd() < (tem(d, "fin") ? .12 : .25);
+      if (vaiDriblar) return dueloArea(t, o, d, defensor, de);
+      if (rnd() < (tem(d, "fin") ? .3 : .1)) return chuteMarcado(t, o, d, defensor, de);
+    }
+  } else if (d.papel !== "GOL" && pb > .64 && centro < 26) {   // entrada da área
+    if (tem(d, "lon") && dm > 8 && rnd() < .1 * (1 + .4 * hab(d, "lon"))) return fazerLance(4, de, () => chute(t, o, d, "normal"));   // chute de fora sem marcação
+    if (livre && !entreEleEGol && rnd() < .15) {             // espaço livre: conduz para dentro da área em vez de recuar
+      const ny = lim(J.bola.y + (A / 2 - J.bola.y) * .4 + entre(-3, 3), 3, A - 3);
+      J.bola = { x: lim(J.bola.x + sentido(t) * entre(5, 9) * (tem(d, "vel") ? 1.3 : 1), 3, L - 3), y: ny };
+      if (rnd() < .3) texto = sorteia([`${d.nome} invade a área!`, `${d.nome} avança na direção do gol.`]);
+      return fazerLance(4, de, null, texto);
+    }
+    if (!livre && tem(d, "dri") && rnd() < .2) return dueloArea(t, o, d, defensor, de, true);
+  }
   // escolhe a ação
   const podeChutar = (pb > .7 || (tem(d, "lon") && pb > .6)) && centro < 22, cruzar = pb > .62 && centro > 17;
   const r = rnd();
   let acao = "passe";
-  if (podeChutar && r < (pb > .85 ? .12 : .05) * of * (t.jogada === "meio" ? 1.2 : t.jogada === "lados" ? .85 : 1) * (tem(d, "lon") && pb <= .85 ? 1.5 : 1) * ((1 + (1.1 - 1) * hab(d, "fin")))) acao = "chute";
+  if (podeChutar && r < (pb > .85 ? .06 : .035) * of * (t.jogada === "meio" ? 1.2 : t.jogada === "lados" ? .85 : 1) * (tem(d, "lon") && pb <= .85 ? 1.5 : 1) * ((1 + (1.1 - 1) * hab(d, "fin")))) acao = "chute";
   else if (cruzar && r < (t.jogada === "lados" ? .34 : t.jogada === "meio" ? .1 : .2) * ((1 + (1.5 - 1) * hab(d, "cru")))) acao = "cruz";
   else if (r < .2 + (d.papel === "PE" || d.papel === "PD" ? .12 : 0) + (.06 * hab(d, "dri"))) acao = "drible";
 
@@ -728,21 +752,21 @@ function proximoLance() {
         texto = sorteia([`${rec.nome} intercepta o passe de ${d.nome}.`, `${rec.nome} entra na frente e rouba o passe de ${d.nome}.`, `${rec.nome} lê a jogada e corta.`]);
         return fazerLance(dur, de, null, texto, "", lane.pt);
       }
-      const fundo = avanco > .2 && prog(t, alvo.x) > .8, fora = fundo ? { x: xDe(t, 1) + (t.lado === "casa" ? 1 : -1), y: lim(alvo.y, 6, A - 6) } : { x: lim(alvo.x + entre(-5, 5), 2, L - 2), y: alvo.y < A / 2 ? -1 : A + 1 };
+      const fundo = avanco > .2 && prog(t, alvo.x) > .8, fora = fundo ? { x: xDe(t, 1) + sentido(t), y: lim(alvo.y, 6, A - 6) } : { x: lim(alvo.x + entre(-5, 5), 2, L - 2), y: alvo.y < A / 2 ? -1 : A + 1 };
       const repor = fundo ? { x: xDe(o, .055), y: A / 2 } : { x: fora.x, y: fora.y < 0 ? .5 : A - .5 };
       texto = fundo ? `Lançamento longo demais de ${d.nome}: tiro de meta.` : `Passe de ${d.nome} sai pela lateral. Lateral para o ${o.curto}.`;
       return fazerLance(dur, de, () => { trocaPosse(o, fundo ? goleiro(o) : perto(o, repor), repor); J.seg += fundo ? 12 : 8; bolaParada(fundo ? "meta" : "lateral"); posicionar(); congelarPos(); }, texto, "", fora);
     }
   } else if (acao === "drible" && (!defensor || dist(defensor, d) > 11)) {   // ninguém perto: avança conduzindo
     dur = 5;
-    J.bola = { x: lim(J.bola.x + (t.lado === "casa" ? 1 : -1) * (tem(d, "vel") ? entre(6, 11) : entre(3, 7)), 3, L - 3), y: lim(J.bola.y + entre(-5, 5), 3, A - 3) };
+    J.bola = { x: lim(J.bola.x + sentido(t) * (tem(d, "vel") ? entre(6, 11) : entre(3, 7)), 3, L - 3), y: lim(J.bola.y + entre(-5, 5), 3, A - 3) };
     if (rnd() < .25) texto = sorteia([`${d.nome} avança com a bola.`, `${d.nome} conduz pelo ${centro > 18 ? "lado" : "meio"}.`, `${d.nome} ganha espaço.`]);
   } else if (acao === "drible") {
     dur = 6;
     const chance = lim(.5 + (fa - fd) / 120 + marc(o).tackle + (.12 * hab(d, "dri")) + (.05 * hab(d, "vel")) - (.1 * hab(defensor, "des")), .15, .9);
     if (rnd() < chance) {
       nota(d, .1); nota(defensor, -.05);
-      const nx = lim(J.bola.x + (t.lado === "casa" ? 1 : -1) * entre(7, 15), 3, L - 3), ny = lim(J.bola.y + entre(-8, 8), 3, A - 3);
+      const nx = lim(J.bola.x + sentido(t) * entre(7, 15), 3, L - 3), ny = lim(J.bola.y + entre(-8, 8), 3, A - 3);
       J.bola = { x: nx, y: ny }; texto = rnd() < .5 ? `${d.nome} passa por ${defensor?.nome || "um marcador"}!` : "";
     } else if (rnd() < marc(o).falta + (.12 * hab(defensor, "ind"))) {
       return falta(t, o, d, defensor);
@@ -769,6 +793,37 @@ function proximoLance() {
     return fazerLance(4, de, () => chute(t, o, d, "normal"));
   }
   fazerLance(dur, de, null, texto, cls);
+}
+/* Duelo na área: o atacante tenta o drible; o marcador com DESARME tenta roubar, os outros ficam na frente.
+   Driblou: fica cara a cara e finaliza. Perdeu: o marcador sai com a bola (ou é falta / pênalti). */
+function dueloArea(t, o, d, def, de, entrada) {
+  if (!def) return fazerLance(4, de, () => chute(t, o, d, "cara"));
+  const fa = forcaAtual(d), fd = forcaAtual(def);
+  const chance = lim((entrada ? .45 : .22) + (fa - fd) / 130 + (.14 * hab(d, "dri")) + (.05 * hab(d, "vel")) - (.14 * hab(def, "des")) - (.06 * hab(def, "mar")) + marc(o).tackle, .12, .85);
+  if (rnd() < chance) {
+    nota(d, .12); nota(def, -.06);
+    J.bola = { x: lim(J.bola.x + sentido(t) * entre(3, 6), 3, L - 3), y: lim(J.bola.y + entre(-5, 5), A / 2 - 14, A / 2 + 14) };
+    if (entrada) return fazerLance(5, de, null, rnd() < .5 ? `${d.nome} passa por ${def.nome} e entra na área!` : "");   // na entrada: só ganha espaço; o próximo lance decide
+    return fazerLance(5, de, () => chute(t, o, d, rnd() < .35 ? "cara" : "normal"), sorteia([`${d.nome} dribla ${def.nome} na área!`, `${d.nome} deixa ${def.nome} no chão e sai na cara do gol!`, `Que drible de ${d.nome} em cima de ${def.nome}!`]));
+  }
+  if (rnd() < (marc(o).falta + (.12 * hab(def, "ind"))) * (entrada ? 1 : .45) * (tem(def, "des") ? .6 : .85)) return falta(t, o, d, def);
+  nota(d, -.05); nota(def, .14); o.st.desarmes++;
+  trocaPosse(o, def, J.bola);
+  return fazerLance(5, de, null, tem(def, "des") ? sorteia([`${def.nome} dá o bote certo e desarma ${d.nome}.`, `Desarme preciso de ${def.nome} em ${d.nome}!`]) : sorteia([`${def.nome} se posiciona na frente e ${d.nome} perde a bola.`, `${def.nome} fecha o caminho de ${d.nome}.`]));
+}
+/* Chute com marcador perto: quem tem DESARME pode roubar antes do chute; quem só fecha (MARCAÇÃO) fica na frente e pode travar. */
+function chuteMarcado(t, o, d, def, de) {
+  if (def && tem(def, "des") && rnd() < .22 + .1 * hab(def, "des") - .06 * hab(d, "fin")) {
+    nota(def, .14); nota(d, -.04); o.st.desarmes++; trocaPosse(o, def, J.bola);
+    return fazerLance(4, de, null, `${d.nome} prepara o chute, mas ${def.nome} chega antes e desarma!`);
+  }
+  const trava = def ? lim(.3 + .14 * hab(def, "mar") + .06 * hab(def, "des") - .12 * hab(d, "fin") + (forcaAtual(def) - forcaAtual(d)) / 300, .08, .55) : 0;
+  if (rnd() < trava) {
+    nota(def, .12); t.st.chutes++;
+    if (rnd() < .45) { t.st.esc++; return fazerLance(4, de, () => { J.seg += 10; escanteio(t, o); }, `${d.nome} bate e ${def.nome} se joga na frente: escanteio.`); }
+    trocaPosse(o, def, J.bola); return fazerLance(4, de, null, `${d.nome} chuta, mas a bola explode em ${def.nome}.`);
+  }
+  return fazerLance(4, de, () => chute(t, o, d, "normal"));
 }
 /* falta: no campo de ataque vira cobrança perigosa (direto ou levantando na área); na área, pênalti */
 function falta(t, o, vit, fal) {
@@ -808,21 +863,28 @@ function penalti(t, o) {
 function chute(t, o, autor, tipo) {
   const gk = goleiro(o), dGol = Math.hypot(xDe(t, 1) - J.bola.x, J.bola.y - A / 2);
   const fa = forcaAtual(autor), fg = forcaAtual(gk);
+  if (tipo === "cara" && !J.roteiro && tem(gk, "sai") && rnd() < .14 + .1 * hab(gk, "sai") - .05 * hab(autor, "fin")) {   // goleiro com SAÍDA DO GOL abafa antes do chute
+    nota(gk, .4); nota(autor, -.08); t.st.chutes++;
+    const de = { ...J.bola }; trocaPosse(o, gk, { x: J.bola.x - sentido(t) * 1, y: J.bola.y });
+    return fazerLance(4, de, null, sorteia([`${gk.nome} sai do gol e abafa ${autor.nome}!`, `${gk.nome} sai rápido e fica com a bola nos pés de ${autor.nome}!`]));
+  }
   t.st.chutes++;
   const bonus = (tem(autor, "fin") && tipo !== "falta" && tipo !== "penalti" ? 1 : 0), longe = tem(autor, "lon") && dGol > 18;
-  let noAlvo = rnd() < (tipo === "penalti" ? .9 + (.04 * hab(autor, "pen")) : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 + (.1 * hab(autor, "fal")) : 0) + bonus * .06 + (longe ? .08 : 0) + (tipo === "cabeca" && .08 * hab(autor, "cab")), .2, .8));
+  const cara = tipo === "cara"; if (cara) tipo = "normal";
+  let noAlvo = rnd() < (cara ? lim(.72 + (fa - 70) / 150 + .1 * hab(autor, "fin"), .55, .92) : tipo === "penalti" ? .9 + (.04 * hab(autor, "pen")) : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 + (.1 * hab(autor, "fal")) : 0) + bonus * .06 + (longe ? .08 : 0) + (tipo === "cabeca" && .08 * hab(autor, "cab")), .2, .8));
   let pGol = tipo === "penalti" ? lim(.82 + (fa - fg) / 250 + (.06 * hab(autor, "pen")) - (.12 * hab(gk, "ppn")), .6, .94)
     : lim(.38 - dGol * .012 + (fa - fg) / 160 + (tipo === "cabeca" ? -.06 + (.08 * hab(autor, "cab")) : 0) + (tipo === "falta" ? -.12 + (.12 * hab(autor, "fal")) : 0) + (tipo === "rebote" ? -.05 : 0)
       + bonus * .07 + (longe ? dGol * .005 : 0) - (.07 * hab(gk, "ref")), .04, .65);
+  if (cara && tipo !== "penalti") pGol = lim(.27 + (fa - fg) / 160 + .1 * hab(autor, "fin") - .12 * hab(gk, "ref") - .04 * hab(gk, "sai"), .22, .8);   // cara a cara: REFLEXO do goleiro pesa mais
   if (J.roteiro) {                                          // replay: os gols acontecem exatamente como o servidor decidiu
     const g = J.roteiro.find(x => !x.feito && x.lado === t.lado && minuto() >= x.min);
     if (g) { g.feito = true; noAlvo = true; pGol = 1; } else pGol = 0;
   }
-  const de = { x: J.bola.x, y: J.bola.y }, alvoGol = { x: xDe(t, 1) - (t.lado === "casa" ? 0.3 : -0.3), y: A / 2 + entre(-3.2, 3.2) };
-  const intro = tipo === "penalti" ? `${autor.nome} bate o pênalti...` : tipo === "rebote" ? `Rebote! ${autor.nome} pega a sobra...` : tipo === "falta" ? `${autor.nome} cobra a falta direto...` : tipo === "cabeca" ? `${autor.nome} sobe de cabeça...` : sorteia([`${autor.nome} arrisca de fora!`, `${autor.nome} bate!`, `${autor.nome} finaliza!`, `${autor.nome} chuta forte!`]);
+  const de = { x: J.bola.x, y: J.bola.y }, alvoGol = { x: xDe(t, 1) - 0.3 * sentido(t), y: A / 2 + entre(-3.2, 3.2) };
+  const intro = tipo === "penalti" ? `${autor.nome} bate o pênalti...` : tipo === "rebote" ? `Rebote! ${autor.nome} pega a sobra...` : tipo === "falta" ? `${autor.nome} cobra a falta direto...` : tipo === "cabeca" ? `${autor.nome} sobe de cabeça...` : cara ? sorteia([`${autor.nome} bate na saída do goleiro!`, `${autor.nome} tira do goleiro!`, `${autor.nome} finaliza cruzado!`]) : sorteia([...(dGol > 18 ? [`${autor.nome} arrisca de fora!`, `${autor.nome} solta a bomba de longe!`] : []), `${autor.nome} bate!`, `${autor.nome} finaliza!`, `${autor.nome} chuta forte!`]);
   if (!noAlvo) {
     nota(autor, -.05);
-    const fora = { x: xDe(t, 1) + (t.lado === "casa" ? 3 : -3), y: A / 2 + sorteia([-1, 1]) * entre(5, 12) };
+    const fora = { x: xDe(t, 1) + 3 * sentido(t), y: A / 2 + sorteia([-1, 1]) * entre(5, 12) };
     narrar("", minutoTxt() + intro + " " + (tipo === "penalti" ? sorteia(["Isolou! Pênalti desperdiçado.", "Na trave! Pênalti perdido!", "Para fora! Que chance perdida."]) : tipo === "falta" ? sorteia(["Por cima da barreira e do gol.", "Bate na barreira.", "Raspando a trave!"]) : sorteia(["Para fora.", "Por cima do gol.", "Tirou tinta da trave!", "Longe do alvo."])));
     return fazerLance(4, de, () => { trocaPosse(o, gk, { x: xDe(o, .06), y: A / 2 }); J.seg += 15; bolaParada("meta"); posicionar(); congelarPos(); }, "", "", fora);
   }
@@ -848,7 +910,7 @@ function chute(t, o, autor, tipo) {
   const encaixa = rnd() < .4;
   narrar("", minutoTxt() + intro + " " + (tipo === "penalti" ? sorteia([`${gk.nome} DEFENDE O PÊNALTI!`, `${gk.nome} adivinha o canto e pega!`]) :
     encaixa ? sorteia([`${gk.nome} encaixa.`, `${gk.nome} segura firme.`, `${gk.nome} defende em dois tempos.`]) : sorteia([`Grande defesa de ${gk.nome}!`, `${gk.nome} espalma!`, `${gk.nome} voa e salva!`, `${gk.nome} faz milagre!`])));
-  const voa = () => { gk.x = alvoGol.x - (t.lado === "casa" ? 1.2 : -1.2); gk.y = alvoGol.y; };     // o goleiro vai na bola
+  const voa = () => { gk.x = alvoGol.x - 1.2 * sentido(t); gk.y = alvoGol.y; };     // o goleiro vai na bola
   if (!encaixa && tipo !== "penalti" && rnd() < .14) {                                            // rebote
     const sobra = { x: xDe(t, entre(.9, .94)), y: A / 2 + entre(-8, 8) }, quem = perto(t, sobra);
     if (quem) { J.bola = sobra; J.dono = quem; J.passeDe = null; fazerLance(4, de, () => chute(t, o, quem, "rebote"), "", "", alvoGol); voa(); return; }
@@ -858,8 +920,8 @@ function chute(t, o, autor, tipo) {
 }
 function escanteio(t, o) {
   bolaParada("escanteio");
-  J.bola = { x: xDe(t, 1) - (t.lado === "casa" ? .5 : -.5), y: sorteia([.5, A - .5]) };
-  const esquerdo = (t.lado === "casa") === (J.bola.y < A / 2);   // lado esquerdo de quem ataca
+  J.bola = { x: xDe(t, 1) - .5 * sentido(t), y: sorteia([.5, A - .5]) };
+  const esquerdo = praDireita(t) === (J.bola.y < A / 2);   // lado esquerdo de quem ataca
   const cob = oficial(t, esquerdo ? "escE" : "escD") || ativos(t).filter(p => SETOR[p.papel] >= 2).sort((a, b) => b.forca - a.forca)[0] || J.dono;
   J.dono = cob; posicionar(); congelarPos();
   const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL");
