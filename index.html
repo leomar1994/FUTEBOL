@@ -946,7 +946,9 @@ function penalti(t, o) {
   J.posse = t; J.dono = cob; J.passeDe = null; J.bola = { ...marca };
   narrar("verm", `${minutoTxt()}🚨 PÊNALTI para o ${t.nome}!`);
   const arruma = () => {                                    // todos fora da área, goleiro na linha, cobrador atrás da bola
-    for (const p of [...ativos(t), ...ativos(o)]) if (p !== cob && p !== gk && prog(t, p.x) > .8) { p.x = xDe(t, entre(.74, .79)); p.y = lim(p.y, A / 2 - 22, A / 2 + 22); }
+    // todo mundo fora da área, em linha na entrada da grande área, esperando a cobrança (o goleiro de quem bate fica no gol dele)
+    const fila = [...ativos(t), ...ativos(o)].filter(p => p !== cob && p !== gk && p.papel !== "GOL").sort(() => rnd() - .5);
+    fila.forEach((p, i) => { const lado = i % 2 ? 1 : -1, k = Math.floor(i / 2); p.x = xDe(t, (L - 17.5 - (k % 3) * 1.6) / L); p.y = lim(A / 2 + lado * (2.5 + k * 2.2), 4, A - 4); });
     gk.x = xDe(t, .995); gk.y = A / 2; cob.x = marca.x - sentido(t) * 1.6; cob.y = marca.y;
   };
   // 1) o cobrador leva a bola devagar até a marca  2) o juiz apita  3) a cobrança
@@ -1020,12 +1022,22 @@ function chute(t, o, autor, tipo) {
   const intro = tipo === "penalti" ? `${autor.nome} bate o pênalti...` : tipo === "rebote" ? `Rebote! ${autor.nome} pega a sobra...` : tipo === "falta" ? `${autor.nome} cobra a falta direto...` : tipo === "cabeca" ? `${autor.nome} sobe de cabeça...` : cara ? sorteia([`${autor.nome} bate na saída do goleiro!`, `${autor.nome} tira do goleiro!`, `${autor.nome} finaliza cruzado!`]) : sorteia([...(dGol > 18 ? [`${autor.nome} arrisca de fora!`, `${autor.nome} solta a bomba de longe!`] : []), `${autor.nome} bate!`, `${autor.nome} finaliza!`, `${autor.nome} chuta forte!`]);
   if (!noAlvo) {
     nota(autor, -.05);
-    const trave = tipo !== "penalti" && rnd() < .12;
+    const trave = tipo === "penalti" ? rnd() < .4 : rnd() < .12;
+    if (tipo === "penalti" && trave) {                       // pênalti na trave: a bola volta para a área e é de quem chegar primeiro
+      scout(autor, "PP"); narrar("", minutoTxt() + intro + " " + sorteia(["NA TRAVE!", "Explode no travessão!", "Bate no pé da trave!"]) + " A bola volta para a área...");
+      cena(`<div class="cena-txt"><b>💥 Na trave!</b>Rebote dentro da área...</div>`, 1300);
+      const poste = { x: xDe(t, 1) - .3 * sentido(t), y: A / 2 + sorteia([-1, 1]) * 3.6 }, sobra = { x: xDe(t, entre(.86, .9)), y: A / 2 + entre(-7, 7) };
+      const atac = perto(t, sobra), zag = perto(o, sobra), ganha = atac && (!zag || rnd() < .5 + (forcaAtual(atac) - forcaAtual(zag)) / 200);
+      return fazerLance(3, de, () => {
+        if (ganha) { J.bola = sobra; J.dono = atac; J.passeDe = null; fazerLance(3, { ...poste }, () => chute(t, o, atac, "rebote"), `${atac.nome} chega primeiro no rebote!`, "", sobra); }
+        else { trocaPosse(o, zag, sobra); fazerLance(3, { ...poste }, null, `${zag.nome} afasta o rebote.`, "", sobra); }
+      }, "", "", poste);
+    }
     scout(autor, tipo === "penalti" ? "PP" : trave ? "FT" : "FF");
     if (trave) { narrar("", minutoTxt() + intro + " " + sorteia(["NA TRAVE!", "Explode no travessão!", "Carimba a trave!"])); const fora = { x: xDe(t, 1) - .3 * sentido(t), y: A / 2 + sorteia([-1, 1]) * 3.6 };
       return fazerLance(4, de, () => { trocaPosse(o, gk, { x: xDe(o, .06), y: A / 2 }); J.seg += 15; bolaParada("meta"); posicionar(); congelarPos(); }, "", "", fora); }
     const fora = { x: xDe(t, 1) + 3 * sentido(t), y: A / 2 + sorteia([-1, 1]) * entre(5, 12) };
-    narrar("", minutoTxt() + intro + " " + (tipo === "penalti" ? sorteia(["Isolou! Pênalti desperdiçado.", "Na trave! Pênalti perdido!", "Para fora! Que chance perdida."]) : tipo === "falta" ? sorteia(["Por cima da barreira e do gol.", "Bate na barreira.", "Raspando a trave!"]) : sorteia(["Para fora.", "Por cima do gol.", "Tirou tinta da trave!", "Longe do alvo."])));
+    narrar("", minutoTxt() + intro + " " + (tipo === "penalti" ? sorteia(["Isolou! Pênalti desperdiçado. Tiro de meta.", "Para fora! Que chance perdida. Tiro de meta."]) : tipo === "falta" ? sorteia(["Por cima da barreira e do gol.", "Bate na barreira.", "Raspando a trave!"]) : sorteia(["Para fora.", "Por cima do gol.", "Tirou tinta da trave!", "Longe do alvo."])));
     if (tipo === "penalti" || tipo === "falta") cena(`<div class="cena-txt"><b>${tipo === "penalti" ? "❌ Pênalti perdido!" : "❌ Não foi dessa vez"}</b>${esc(autor.nome)} ${tipo === "penalti" ? "manda para fora" : "não acerta o gol"}.</div>`, 1500);
     return fazerLance(4, de, () => { trocaPosse(o, gk, { x: xDe(o, .06), y: A / 2 }); J.seg += 15; bolaParada("meta"); posicionar(); congelarPos(); }, "", "", fora);
   }
@@ -1054,7 +1066,14 @@ function chute(t, o, autor, tipo) {
     encaixa ? sorteia([`${gk.nome} encaixa.`, `${gk.nome} segura firme.`, `${gk.nome} defende em dois tempos.`]) : sorteia([`Grande defesa de ${gk.nome}!`, `${gk.nome} espalma!`, `${gk.nome} voa e salva!`, `${gk.nome} faz milagre!`])));
   if (tipo === "penalti" || tipo === "falta") cena(`<div class="cena-txt"><b>🧤 ${tipo === "penalti" ? "Defendeu o pênalti!" : "Defesa do goleiro!"}</b>${esc(gk.nome)} pega a cobrança de ${esc(autor.nome)}.</div>`, 1500);
   const voa = () => { gk.x = alvoGol.x - 1.2 * sentido(t); gk.y = alvoGol.y; };     // o goleiro vai na bola
-  if (!encaixa && tipo !== "penalti" && rnd() < .14) {                                            // rebote
+  if (tipo === "penalti") {                                  // defendeu o pênalti: o goleiro segura e lança direto para o atacante do time dele
+    const dest = ativos(o).filter(p => p.papel !== "GOL").sort((a, b) => prog(o, b.x) - prog(o, a.x))[0] || gk;
+    const alvo = { x: xDe(o, Math.max(.55, prog(o, dest.x))), y: lim(dest.y, 6, A - 6) };
+    fazerLance(4, de, () => { J.posse = o; J.dono = gk; J.passeDe = null; J.bola = { x: gk.x, y: gk.y };
+      const de2 = { ...J.bola }; trocaPosse(o, dest, alvo); J.passeDe = gk; fazerLance(5, de2, null, `${gk.nome} segura firme e lança direto para ${dest.nome}!`, "", alvo); dest.x = alvo.x; dest.y = alvo.y; }, "", "", alvoGol);
+    voa(); return;
+  }
+  if (!encaixa && rnd() < .14) {                                            // rebote
     const sobra = { x: xDe(t, entre(.9, .94)), y: A / 2 + entre(-8, 8) }, quem = perto(t, sobra);
     if (quem) { J.bola = sobra; J.dono = quem; J.passeDe = null; fazerLance(4, de, () => chute(t, o, quem, "rebote"), "", "", alvoGol); voa(); return; }
   }
