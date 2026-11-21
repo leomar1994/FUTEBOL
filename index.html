@@ -305,6 +305,7 @@
             <div class="ft"><label>Marcação</label><select id="on-marcacao"><option value="leve">Leve (poucas faltas, desarma menos)</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado (desarma muito, mais cartões)</option></select></div>
             <div class="ft"><label>Jogadas</label><select id="on-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></div>
             <p><button class="prim" id="on-tatica">💾 Salvar tática</button> <span class="dica" id="on-msg-tat"></span></p></div>
+          <div class="caixa" style="margin-top:12px"><h2>📅 Minha agenda</h2><p class="dica">Rodada da liga todo dia às 12h00/12h20. Amistosos e rodadas de torneio não podem cair entre 11h40 e 12h40 nem a menos de 20 minutos de outro jogo seu — o jogo avisa se chocar.</p><div class="res-l" id="ag-on"></div></div>
           <div class="caixa" style="margin-top:12px" id="est-on-box"><h2>🏟 Estádio e torcida</h2><div id="est-on-info"></div>
             <div class="ft"><label>Preço do ingresso (R$)</label><input type="text" id="est-on-preco" inputmode="numeric" style="max-width:110px"> <button id="est-on-salvar">Salvar preço</button></div>
             <p><button id="est-on-ampliar"></button> <span class="dica" id="est-on-msg"></span></p></div>
@@ -2238,6 +2239,7 @@ const ONAPI = {
   async leiloes() { const r = await SB.from("liga_leiloes").select("*, j:liga_jogadores(*)").eq("status", "aberto").order("fim").limit(200); return r.error ? [] : r.data; },
   async leiloar(id) { const r = await SB.rpc("liga_leiloar", { p_jogador: id }); if (r.error) throw r.error; },
   async lance(id) { const r = await SB.rpc("liga_lance", { p_leilao: id }); if (r.error) throw r.error; return r.data; },
+  async agenda() { const r = await SB.rpc("liga_minha_agenda"); return r.error ? [] : r.data; },
   async preco(v) { const r = await SB.rpc("liga_definir_preco", { p_preco: v }); if (r.error) throw r.error; },
   async ampliar() { const r = await SB.rpc("liga_ampliar_estadio"); if (r.error) throw r.error; return r.data; },
   async renovar(id, anos) { const r = await SB.rpc("liga_renovar", { p_jogador: id, p_anos: anos }); if (r.error) throw r.error; },
@@ -2269,7 +2271,7 @@ async function recarregarOnline() {
   ON.tatica = await ONAPI.minhaTatica(ON.user.id);
   ON.amistosos = await ONAPI.amistosos(ON.user.id).catch(() => []);
   ON.tn = await ONAPI.torneios().catch(() => ({ torneios: [], inscritos: [], jogos: [] }));
-  ON.elencos = {}; ON.leiloes = await ONAPI.leiloes().catch(() => []);
+  ON.elencos = {}; ON.leiloes = await ONAPI.leiloes().catch(() => []); ON.agenda = await ONAPI.agenda().catch(() => []);
   if (ON.eu.clube) await carregarElencos([ON.eu.clube]);
   desenharOnline(); onMostrar("hub");
 }
@@ -2334,7 +2336,7 @@ function desenharOnline() {
     (anterior.length ? `<h3>Rodada ${est.rodada - 1}</h3>${jogosOnHtml(anterior, eu)}` : "") + (!atual.some(j => j.jogado) && anterior.length ? `<h3>Rodada ${est.rodada} (próxima)</h3>${jogosOnHtml(atual, eu)}` : "");
   const humanos = new Map(ON.tecnicos.filter(t => t.clube).map(t => [t.clube, t.nome]));
   $("on-tecs").innerHTML = ON.tecnicos.slice().sort((a, b) => a.nivel - b.nivel || (b.titulos?.length || 0) - (a.titulos?.length || 0)).map(t => `<div>👔 <b>${esc(t.nome)}</b> ${esc((t.nac || "").split(" ")[0])} · ${t.demitido ? "sem clube" : esc(nomeOn(t.clube))} · nível ${NUM_DIV[DIVS[t.nivel]]}${t.titulos?.length ? " · 🏆 " + t.titulos.length : ""}</div>`).join("");
-  desenharAmistosos(); desenharTorneios(); desenharElencoOn(); desenharLeilao(); desenharEstadioOn();
+  desenharAmistosos(); desenharTorneios(); desenharElencoOn(); desenharLeilao(); desenharEstadioOn(); desenharAgendaOn();
   ON.aba ||= div;
   $("on-abas").innerHTML = DIVS.map(d => `<button data-on-tab="${d}" class="${d === ON.aba ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
   const ord = ordemOn(ON.aba), iD = DIVS.indexOf(ON.aba), n = ord.length;
@@ -2360,6 +2362,18 @@ async function carregarElencos(ids) {
   const falta = ids.filter(id => id && !ON.elencos?.[id]); if (!falta.length) return;
   ON.elencos ||= {}; const l = await ONAPI.elencos(falta).catch(() => []);
   for (const id of falta) ON.elencos[id] = l.filter(j => j.clube === id);
+}
+/* ---------- agenda online: próximos 7 dias ---------- */
+function desenharAgendaOn() {
+  const eu = ON.eu, itens = (ON.agenda || []).map(x => ({ q: new Date(x.quando), txt: x.oque }));
+  const meu = !eu.demitido && ON.jogos.find(j => j.rodada === ON.estado.rodada && !j.jogado && (j.casa === eu.clube || j.fora === eu.clube));
+  for (let d = 0; d < 7; d++) { const q = proximoTurnoEm(meu?.turno || 1); q.setDate(q.getDate() + d); itens.push({ q, txt: `⚽ Rodada da liga${d === 0 && meu ? `: ${nomeOn(meu.casa)} × ${nomeOn(meu.fora)}` : ""}`, liga: true }); }
+  itens.sort((a, b) => a.q - b.q);
+  const dia = q => q.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" });
+  let h = "", ult = "";
+  for (const x of itens.filter(x => x.q - new Date() < 8 * 86400000)) { const d = dia(x.q); if (d !== ult) { h += `<h3>${d}</h3>`; ult = d; }
+    h += `<div>${x.q.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} — ${x.liga ? esc(x.txt) : `<b>${esc(x.txt)}</b>`}</div>`; }
+  $("ag-on").innerHTML = h;
 }
 /* ---------- estádio e torcida (online) ---------- */
 function desenharEstadioOn() {

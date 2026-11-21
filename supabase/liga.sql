@@ -373,6 +373,8 @@ begin
   if p_quando < now() + interval '5 minutes' then raise exception 'Marque com pelo menos 5 minutos de antecedência.'; end if;
   if p_quando > now() + interval '7 days' then raise exception 'Marque para no máximo 7 dias à frente.'; end if;
   if (select count(*) from liga_amistosos where desafiante = uid and status in ('pendente','aceito')) >= 3 then raise exception 'Você já tem 3 amistosos marcados ou esperando resposta.'; end if;
+  if liga_conflito(uid, p_quando) is not null then raise exception '%', liga_conflito(uid, p_quando); end if;
+  if liga_conflito(p_adversario, p_quando) is not null then raise exception 'O outro técnico já tem compromisso nesse horário (ou é a hora da rodada). Escolha outro.'; end if;
   insert into liga_amistosos (desafiante, desafiado, casa, fora, quando) values (uid, p_adversario, eu.clube, ele.clube, date_trunc('minute', p_quando)) returning * into a;
   return a;
 end $$;
@@ -386,6 +388,8 @@ begin
     if a.desafiado <> uid then raise exception 'Só o técnico convidado pode aceitar.'; end if;
     if a.status <> 'pendente' then raise exception 'Esse convite não está mais aberto.'; end if;
     if a.quando <= now() then raise exception 'O horário desse amistoso já passou.'; end if;
+    update liga_amistosos set status = 'recusado' where id = p_id;   -- tira este convite da conta para checar os outros compromissos
+    if liga_conflito(uid, a.quando) is not null then update liga_amistosos set status = 'pendente' where id = p_id; raise exception '%', liga_conflito(uid, a.quando); end if;
     update liga_amistosos set status = 'aceito' where id = p_id returning * into a;
   else                                            -- recusar (convidado) ou cancelar (qualquer um dos dois) antes do jogo
     if uid not in (a.desafiante, a.desafiado) then raise exception 'Esse amistoso não é seu.'; end if;
@@ -465,6 +469,10 @@ begin
   if eu.clube is null then raise exception 'Você precisa estar num clube para jogar torneios.'; end if;
   if exists (select 1 from liga_torneio_inscritos where torneio = p_id and (user_id = uid or clube = eu.clube)) then raise exception 'Você já está inscrito nesse torneio.'; end if;
   if (select count(*) from liga_torneio_inscritos where torneio = p_id) >= t.vagas then raise exception 'O torneio está lotado.'; end if;
+  declare msg text; begin
+    select liga_conflito(uid, s, p_id) into msg from liga_torneio_slots(p_id) s where liga_conflito(uid, s, p_id) is not null limit 1;
+    if msg is not null then raise exception 'Uma rodada desse torneio choca com sua agenda. %', msg; end if;
+  end;
   select * into c from liga_clubes where id = eu.clube for update;
   if coalesce(c.caixa, 0) < t.taxa then raise exception 'Seu clube não tem dinheiro para pagar a inscrição.'; end if;
   update liga_clubes set caixa = coalesce(caixa, 0) - t.taxa where id = c.id;
@@ -839,5 +847,43 @@ end $$;
 revoke all on function public.liga_bilheteria(bigint) from public, anon, authenticated;
 revoke all on function public.liga_ampliar_estadio(), public.liga_definir_preco(int) from public, anon;
 grant execute on function public.liga_ampliar_estadio(), public.liga_definir_preco(int) to authenticated;
+
+-- =====================================================================
+-- AGENDA E CONFLITO DE HORÁRIOS (amistosos e torneios não podem bater com a rodada da liga nem entre si)
+-- =====================================================================
+create or replace function public.liga_torneio_slots(p_id bigint) returns setof timestamptz language sql stable as $$
+  select t.inicio + make_interval(mins => k * t.intervalo)
+  from public.liga_torneios t, generate_series(0, (case when t.formato = 'mata' then round(log(2, t.vagas))::int else t.vagas - 1 end) - 1) k
+  where t.id = p_id
+$$;
+-- compromissos de um técnico: amistosos marcados/pendentes e rodadas dos torneios em que está inscrito
+create or replace function public.liga_compromissos(p_user uuid, p_exceto_torneio bigint default null) returns table (quando timestamptz, oque text)
+language sql stable security definer set search_path = public as $$
+  select a.quando, 'Amistoso ' || (select nome from liga_clubes where id = a.casa) || ' × ' || (select nome from liga_clubes where id = a.fora)
+    from liga_amistosos a where p_user in (a.desafiante, a.desafiado) and a.status in ('pendente', 'aceito') and a.quando > now() - interval '20 minutes'
+  union all
+  select s, 'Torneio ' || t.nome
+    from liga_torneios t join liga_torneio_inscritos i on i.torneio = t.id and i.user_id = p_user, liga_torneio_slots(t.id) s
+    where t.status = 'inscricoes' and t.id is distinct from p_exceto_torneio
+  union all
+  select g.quando, 'Torneio ' || t.nome
+    from liga_torneios t join liga_torneio_inscritos i on i.torneio = t.id and i.user_id = p_user join liga_torneio_jogos g on g.torneio = t.id and i.clube in (g.casa, g.fora)
+    where t.status = 'andamento' and not g.jogado and t.id is distinct from p_exceto_torneio
+$$;
+-- devolve o motivo do conflito (ou null se o horário estiver livre)
+create or replace function public.liga_conflito(p_user uuid, p_quando timestamptz, p_exceto_torneio bigint default null) returns text
+language plpgsql stable security definer set search_path = public as $$
+declare h time := (p_quando at time zone 'America/Sao_Paulo')::time; c record;
+begin
+  if h >= time '11:40' and h <= time '12:40' then return 'O horário bate com a rodada da liga (todo dia, 12h00–12h40). Escolha outro.'; end if;
+  select * into c from liga_compromissos(p_user, p_exceto_torneio) x where abs(extract(epoch from x.quando - p_quando)) < 20 * 60 order by x.quando limit 1;
+  if found then return 'Choca com outro jogo já marcado: ' || c.oque || ' às ' || to_char(c.quando at time zone 'America/Sao_Paulo', 'DD/MM HH24:MI') || '. Os jogos precisam ter pelo menos 20 minutos de diferença.'; end if;
+  return null;
+end $$;
+create or replace function public.liga_minha_agenda() returns table (quando timestamptz, oque text) language sql stable security definer set search_path = public as $$
+  select * from public.liga_compromissos(auth.uid()) order by 1
+$$;
+revoke all on function public.liga_compromissos(uuid, bigint), public.liga_conflito(uuid, timestamptz, bigint) from public, anon, authenticated;
+grant execute on function public.liga_minha_agenda(), public.liga_torneio_slots(bigint) to authenticated;
 
 -- Para testar sem esperar: select public.liga_rodar_turno(1);  (e 20 min depois, ou na hora: select public.liga_rodar_turno(2);)
