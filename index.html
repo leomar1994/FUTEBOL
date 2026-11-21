@@ -340,12 +340,13 @@
             </div>
             <div class="res-l" id="am-lista"></div></div>
           <div class="caixa" style="margin-top:12px" id="tn-box"><h2>🏆 Torneios dos técnicos</h2>
-            <p class="dica">Campeonatos fora do horário da liga (pré-temporada, férias, fim de semana…). Cada técnico paga a inscrição com o <b>dinheiro do clube</b> e o pote vai para os primeiros colocados. Não contam na tabela da liga nem dão tokens.</p>
+            <p class="dica">Campeonatos fora do horário da liga (pré-temporada, férias, fim de semana…). Cada técnico aposta (paga a inscrição) com o <b>dinheiro do clube</b>; quando o torneio começa o jogo põe <b>+20%</b> no pote, que vai para os 4 primeiros (padrão 65% · 20% · 10% · 5%). Vale para mata-mata e para ligas amistosas (pontos corridos). Não contam na tabela da liga nem dão tokens.</p>
             <details id="tn-criar"><summary><b>➕ Criar torneio</b></summary>
               <div class="ft"><label>Nome</label><input type="text" id="tn-nome" maxlength="40" placeholder="Ex.: Copa de Verão"></div>
-              <div class="ft"><label>Formato</label><select id="tn-formato"><option value="mata">Mata-mata (jogo único, empate → pênaltis; tem disputa de 3º lugar)</option><option value="pontos">Pontos corridos (todos contra todos)</option></select></div>
+              <div class="ft"><label>Formato</label><select id="tn-formato"><option value="mata">Mata-mata (jogo único, empate → pênaltis; tem disputa de 3º lugar)</option><option value="pontos">Liga amistosa: pontos corridos (todos contra todos)</option></select></div>
               <div class="ft"><label>Vagas</label><select id="tn-vagas"></select></div>
-              <div class="ft"><label>Inscrição (R$ mi)</label><input type="text" id="tn-taxa" inputmode="decimal" value="1"></div>
+              <div class="ft"><label>Aposta / inscrição</label><input type="text" id="tn-taxa" value="10 mil" placeholder="ex.: 10 mil, 500 mil, 1,5 mi"></div>
+              <p class="dica" id="tn-exemplo"></p>
               <div class="ft"><label>Prêmio</label><select id="tn-premio"></select></div>
               <div class="ft"><label>Início</label><input type="datetime-local" id="tn-inicio" style="font:inherit;background:var(--painel2);color:var(--texto);border:1px solid var(--borda);border-radius:8px;padding:8px"></div>
               <div class="ft"><label>Entre rodadas</label><select id="tn-intervalo"><option value="20">20 minutos</option><option value="30">30 minutos</option><option value="60">1 hora</option><option value="120">2 horas</option><option value="1440">1 dia</option></select></div>
@@ -2509,7 +2510,11 @@ function desenharAmistosos() {
 }
 /* ---------- torneios dos técnicos ---------- */
 const PREMIOS = { "65/20/10/5": [65, 20, 10, 5], "100": [100], "70/30": [70, 30], "60/30/10": [60, 30, 10], "50/25/15/10": [50, 25, 15, 10] };
-const premioPadrao = (v, f = $("tn-formato").value) => f === "mata" ? "65/20/10/5" : v <= 4 ? "70/30" : v <= 8 ? "60/30/10" : "50/25/15/10";
+const premioPadrao = () => "65/20/10/5";   // padrão para mata-mata e pontos corridos (ligas amistosas)
+function lerValor(txt) {                                     // "10k", "10 mil", "1,5 mi", "2" (em milhões) → R$ milhões
+  const t = String(txt || "").toLowerCase().replace(/r\$|\s/g, "").replace(",", "."), n = parseFloat(t);
+  if (!(n >= 0)) return NaN; return /k|mil/.test(t) ? n / 1000 : n;
+}
 const premioTxt = p => p.map((x, i) => `${i + 1}º ${x}%`).join(" · ");
 function opcoesTorneio() {
   const f = $("tn-formato").value, vs = f === "mata" ? [4, 8, 16] : [4, 6, 8], vAnt = Number($("tn-vagas").value), fAnt = $("tn-formato").dataset.ant || f; $("tn-formato").dataset.ant = f;
@@ -2519,14 +2524,21 @@ function opcoesTorneio() {
   $("tn-premio").value = PREMIOS[pAnt] && PREMIOS[pAnt].length <= Math.min(4, v) && pAnt !== premioPadrao(vAnt, fAnt) ? pAnt : premioPadrao(v);
 }
 $("tn-formato").onchange = opcoesTorneio; $("tn-vagas").onchange = opcoesTorneio;
+function exemploTorneio() {
+  const v = Number($("tn-vagas").value) || 8, a = lerValor($("tn-taxa").value), p = PREMIOS[$("tn-premio").value] || [65, 20, 10, 5], h = Math.max(2, Math.ceil(v * .6));
+  if (!(a > 0)) return ($("tn-exemplo").textContent = "Sem aposta: o torneio vale só o troféu.");
+  const tot = a * h * 1.2;
+  $("tn-exemplo").textContent = `Exemplo: se ${h} técnicos entrarem (o resto vira robô), apostam ${dinheiro(a * h)}; o jogo põe +20% = ${dinheiro(tot)} de prêmio. ${p.map((x, i) => `${i + 1}º leva ${dinheiro(tot * x / 100)}`).join(" · ")}.`;
+}
+for (const id of ["tn-taxa", "tn-vagas", "tn-premio", "tn-formato"]) $(id).addEventListener("input", exemploTorneio);
 function desenharTorneios() {
   const eu = ON.eu, D = ON.tn || { torneios: [], inscritos: [], jogos: [] };
   $("tn-criar").hidden = !!eu.demitido;
-  if (!$("tn-vagas").options.length) opcoesTorneio();
+  if (!$("tn-vagas").options.length) opcoesTorneio(); exemploTorneio();
   if (!$("tn-inicio").value) { const d = new Date(Date.now() + 2 * 3600000); d.setMinutes(0, 0, 0); $("tn-inicio").value = new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
   const insc = id => D.inscritos.filter(i => i.torneio === id), meu = t => insc(t.id).some(i => i.user_id === eu.user_id);
   const nomeIns = i => `${esc(nomeOn(i.clube))}${i.user_id ? ` <span class="dica">(${esc(tecOn(i.user_id)?.nome || "técnico")})</span>` : " <span class='dica'>🤖</span>"}`;
-  const cab = t => `<h3>${esc(t.nome)}${meu(t) ? " ⭐" : ""}</h3><div class="dica">${t.formato === "mata" ? "Mata-mata" : "Pontos corridos"} · ${t.vagas} clubes · inscrição ${dinheiro(Number(t.taxa))} · pote <b>${dinheiro(Number(t.pote))}</b> · ${premioTxt(t.premio)} · criado por ${esc(tecOn(t.criador)?.nome || "técnico")}</div>`;
+  const cab = t => `<h3>${esc(t.nome)}${meu(t) ? " ⭐" : ""}</h3><div class="dica">${t.formato === "mata" ? "Mata-mata" : "Liga (pontos corridos)"} · ${t.vagas} clubes · aposta ${dinheiro(Number(t.taxa))} · ${t.status === "inscricoes" ? `apostado ${dinheiro(Number(t.pote))} → prêmio total <b>${dinheiro(Number(t.pote) * 1.2)}</b> (o jogo põe +20%)` : `prêmio total <b>${dinheiro(Number(t.pote))}</b>`} · ${premioTxt(t.premio)} · criado por ${esc(tecOn(t.criador)?.nome || "técnico")}</div>`;
   const jogosHtml = t => { const js = D.jogos.filter(j => j.torneio === t.id), rods = [...new Set(js.map(j => j.rodada))];
     return rods.map(r => { const l = js.filter(j => j.rodada === r).sort((a, b) => a.terceiro - b.terceiro), nome = t.formato === "mata" ? ({ 1: "Final", 2: "Semifinal", 4: "Quartas", 8: "Oitavas" }[l.filter(j => !j.terceiro).length] || `Rodada ${r}`) : `Rodada ${r}`;
       return `<div class="dica" style="margin-top:4px"><b>${nome}${l.some(j => j.terceiro) ? " e disputa de 3º lugar" : ""}</b> · ${dataHora(l[0].quando)}</div>` + l.map(j => { const eu2 = j.casa === eu.clube || j.fora === eu.clube, b = x => (j.terceiro ? "🥉 " : "") + (eu2 ? `<b>${x}</b>` : x);
@@ -2548,8 +2560,8 @@ function desenharTorneios() {
   $("tn-lista").innerHTML = h || "<p class='dica'>Nenhum torneio aberto. Crie o primeiro!</p>";
 }
 $("tn-criar-bt").onclick = async () => {
-  const taxa = parseFloat(String($("tn-taxa").value).replace(",", ".")), ini = $("tn-inicio").value;
-  if (!(taxa >= 0)) return ($("tn-msg").textContent = "Digite o valor da inscrição (pode ser 0).");
+  const taxa = lerValor($("tn-taxa").value), ini = $("tn-inicio").value;
+  if (!(taxa >= 0)) return ($("tn-msg").textContent = "Digite o valor da aposta (ex.: 10 mil ou 1,5 mi; pode ser 0).");
   if (!ini) return ($("tn-msg").textContent = "Escolha o dia e a hora do início.");
   try {
     await ONAPI.criarTorneio({ p_nome: $("tn-nome").value, p_formato: $("tn-formato").value, p_vagas: Number($("tn-vagas").value), p_taxa: taxa, p_premio: PREMIOS[$("tn-premio").value],

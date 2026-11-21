@@ -497,7 +497,7 @@ begin
   if p_intervalo < 20 or p_intervalo > 2880 then raise exception 'O intervalo entre rodadas deve ser de 20 minutos a 2 dias.'; end if;
   if (select count(*) from liga_torneios where criador = uid and status in ('inscricoes', 'andamento')) >= 2 then raise exception 'Você já tem 2 torneios abertos.'; end if;
   insert into liga_torneios (nome, criador, formato, vagas, taxa, premio, inicio, intervalo, robos)
-  values (left(trim(p_nome), 40), uid, p_formato, p_vagas, round(p_taxa, 2), p_premio, date_trunc('minute', p_inicio), p_intervalo, coalesce(p_robos, true)) returning id into tid;
+  values (left(trim(p_nome), 40), uid, p_formato, p_vagas, round(p_taxa, 3), p_premio, date_trunc('minute', p_inicio), p_intervalo, coalesce(p_robos, true)) returning id into tid;
   perform liga_inscrever_torneio(tid);
   return tid;
 end $$;
@@ -522,7 +522,7 @@ begin
   select * into t from liga_torneios where id = p_id;
   for g in select posicao, count(*) c from liga_torneio_inscritos where torneio = p_id and posicao is not null group by posicao loop
     select coalesce(sum(t.premio[x]), 0) into v from generate_series(g.posicao, g.posicao + g.c - 1) x where x <= array_length(t.premio, 1);
-    update liga_torneio_inscritos set premio = round(t.pote * v / 100 / g.c, 2) where torneio = p_id and posicao = g.posicao;
+    update liga_torneio_inscritos set premio = round(t.pote * v / 100 / g.c, 3) where torneio = p_id and posicao = g.posicao;
   end loop;
   update liga_clubes c set caixa = coalesce(c.caixa, 0) + i.premio
     from liga_torneio_inscritos i left join liga_tecnicos tt on tt.user_id = i.user_id
@@ -560,7 +560,7 @@ begin
         ids := array[ids[1]] || array[ids[t.vagas]] || ids[2:t.vagas - 1];
       end loop;
     end if;
-    update liga_torneios set status = 'andamento', fase = 1 where id = t.id;
+    update liga_torneios set status = 'andamento', fase = 1, pote = round(pote * 1.2, 3) where id = t.id;   -- o jogo põe +20% no pote das inscrições
   end loop;
 
   for g in select j.*, tt.formato from liga_torneio_jogos j join liga_torneios tt on tt.id = j.torneio where not j.jogado and j.quando <= now() for update of j skip locked loop
