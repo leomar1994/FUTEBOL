@@ -1746,7 +1746,7 @@ const VOZ = window.VOZ = (() => {
   const BORDOES = new Proxy({}, { get: (_, k) => (ESTILOS[cfg.estilo] || ESTILOS.classico).frases[k] });
   const cfg = Object.assign({ modo: "off", sons: true, vol: .9, estilo: "classico", coment: true }, (() => { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { return {}; } })());
   const salvarCfg = () => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch (e) {} };
-  let voz = null, voz2 = null, ctx = null, tocando = null, ate = 0, ultComent = 0, comentou = new Set(); const ultFala = {};
+  let gravando = null, voz = null, voz2 = null, ctx = null, tocando = null, ate = 0, ultComent = 0, comentou = new Set(); const ultFala = {};
   const escolher = () => { const vs = S?.getVoices?.() || []; const br = vs.filter(v => /pt[-_]BR/i.test(v.lang));
     voz = br.find(v => /natural|online/i.test(v.name)) || br.find(v => /google/i.test(v.name)) || br[0] || vs.find(v => /^pt/i.test(v.lang)) || null;
     voz2 = br.find(v => v !== voz && /natural|online/i.test(v.name)) || br.find(v => v !== voz) || voz; };   // comentarista: outra voz, se houver
@@ -1755,7 +1755,8 @@ const VOZ = window.VOZ = (() => {
   const db = () => new Promise((ok, erro) => { const r = indexedDB.open("fut-narrador", 1); r.onupgradeneeded = () => r.result.createObjectStore("audios"); r.onsuccess = () => ok(r.result); r.onerror = () => erro(r.error); });
   const op = async (modo, fn) => { const d = await db(); return new Promise((ok, erro) => { const tx = d.transaction("audios", modo), r = fn(tx.objectStore("audios")); tx.oncomplete = () => ok(r?.result); tx.onerror = () => erro(tx.error); }); };
   const audios = {};
-  (async () => { try { for (const [k] of EVENTOS) { const b = await op("readonly", s => s.get(k)); if (b) audios[k] = URL.createObjectURL(b); } } catch (e) {} })();
+  (async () => { try { const ks = await op("readonly", s => s.getAllKeys()); for (const k of ks || []) { const b = await op("readonly", s => s.get(k)); if (b) audios[k] = URL.createObjectURL(b); } } catch (e) {} })();
+  const variantes = k => Object.keys(audios).filter(x => x === k || x.startsWith(k + "#"));
   async function guardar(k, blob) { try { await op("readwrite", s => s.put(blob, k)); } catch (e) {} if (audios[k]) URL.revokeObjectURL(audios[k]); audios[k] = URL.createObjectURL(blob); }
   async function apagar(k) { try { await op("readwrite", s => s.delete(k)); } catch (e) {} if (audios[k]) URL.revokeObjectURL(audios[k]); delete audios[k]; }
   // ---- sons do estádio (sintetizados) ----
@@ -1790,7 +1791,9 @@ const VOZ = window.VOZ = (() => {
     if (!S || !txt) return; const u = new SpeechSynthesisUtterance(txt); u.lang = voz?.lang || "pt-BR"; if (voz) u.voice = voz;
     const e = ESTILOS[cfg.estilo] || ESTILOS.classico; u.rate = e.ritmo + (animado ? .07 : 0); u.pitch = Math.min(2, e.tom + (animado ? .2 : 0)); u.volume = cfg.vol; S.speak(u);
   }
-  function tocarArquivo(k) { const a = new Audio(audios[k]); a.volume = cfg.vol; tocando = a; a.play().catch(() => {}); }
+  function tocarArquivo(k) {                                // várias gravações do mesmo lance: sorteia uma, sem repetir a última
+    const vs = variantes(k), op2 = vs.filter(x => x !== ultFala["arq:" + k]), ch = (op2.length ? op2 : vs)[Math.floor(Math.random() * (op2.length || vs.length))]; ultFala["arq:" + k] = ch;
+    const a = new Audio(audios[ch]); a.volume = cfg.vol; tocando = a; a.play().catch(() => {}); }
   function narrarEvento(k, txt) {
     const urgente = k === "gol" || k === "fim" || k === "vermelho" || k === "penalti";
     if (!urgente && Date.now() < ate) return;               // ainda falando o lance anterior: não acumula
@@ -1799,7 +1802,7 @@ const VOZ = window.VOZ = (() => {
       if (k === "gol") torcida(6, .5, true); else if (k === "fora" || k === "trave" || k === "defesa") torcida(1.6, .22);
       if (k === "falta" || k === "penalti" || k === "cartao" || k === "vermelho" || k === "impedimento") apito(1); else if (k === "inicio") apito(1, true); else if (k === "intervalo") apito(2, true); else if (k === "fim") apito(3, true);
     }
-    if (cfg.modo === "gravacoes" && audios[k]) { tocarArquivo(k); ate = Date.now() + 2500; return; }
+    if (cfg.modo === "gravacoes" && variantes(k).length) { tocarArquivo(k); ate = Date.now() + 2500; return; }
     const op = BORDOES[k].filter(f => f !== ultFala[k]); let fala = sorte(op.length ? op : BORDOES[k]); ultFala[k] = fala;   // não repete a mesma frase seguida
     if (k === "gol") { const m = txt.match(/GOOO+L do ([^!]+)!\s*([^,.!]+?) marca/i); if (m) fala += ` Gol do ${m[1]}! ${m[2]}!`; }
     if (k === "fim") { const m = txt.match(/:\s*(.+?)\s(\d+)\s*[×x]\s*(\d+)\s(.+?)\.?$/); if (m) fala += ` ${m[1]} ${m[2]}, ${m[4]} ${m[3]}.`; }
@@ -1851,16 +1854,23 @@ const VOZ = window.VOZ = (() => {
     calar() { try { S?.cancel(); } catch (e) {} try { tocando?.pause(); } catch (e) {} ate = 0; },
     botao() { const b = B(); if (b) b.textContent = cfg.modo === "off" ? "🔇 Narrador" : "🔊 Narrador"; },
     teste(k) { ac(); narrarEvento(k, k === "gol" ? "GOOOL do Seu Time! Craque marca" : ""); },
-    async gravar(k, el) {
-      if (!navigator.mediaDevices?.getUserMedia) return alert("Este navegador não grava áudio. Use “Escolher arquivo”.");
+    async gravar(k, el, depois) {
+      if (gravando) { gravando.stop(); return; }              // segundo toque: para a gravação
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return alert("Este navegador não grava áudio. Use “Escolher arquivo”.");
       let st; try { st = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { return alert("Sem permissão para usar o microfone."); }
-      const rec = new MediaRecorder(st), partes = []; rec.ondataavailable = e => partes.push(e.data);
-      rec.onstop = async () => { st.getTracks().forEach(x => x.stop()); await guardar(k, new Blob(partes, { type: rec.mimeType || "audio/webm" })); abrirConfigVoz(); };
-      rec.start(); if (el) { el.textContent = "⏺ Gravando… (4 s)"; el.disabled = true; } setTimeout(() => rec.state !== "inactive" && rec.stop(), 4000);
+      const rec = new MediaRecorder(st), partes = []; rec.ondataavailable = e => partes.push(e.data); gravando = rec;
+      rec.onstop = async () => { gravando = null; st.getTracks().forEach(x => x.stop()); await guardar(k, new Blob(partes, { type: rec.mimeType || "audio/webm" })); (depois || abrirConfigVoz)(); };
+      rec.start(); if (el) { el.textContent = "⏹ Parar"; el.classList.add("prim"); } setTimeout(() => rec.state !== "inactive" && rec.stop(), 6000);
+    },
+    ouvirGravacao(k) { if (audios[k]) { const a = new Audio(audios[k]); a.volume = cfg.vol; a.play().catch(() => {}); } },
+    temChave: k => !!audios[k],
+    roteiro() {                                              // as frases do estilo escolhido, para o técnico ler em voz alta
+      const fr = (ESTILOS[cfg.estilo] || ESTILOS.classico).frases;
+      return EVENTOS.flatMap(([k, n]) => (fr[k] || []).map((f, i) => ({ k, chave: `${k}#${i}`, lance: n, frase: f })));
     },
     async arquivo(k, f) { if (f) { await guardar(k, f); abrirConfigVoz(); } },
-    async apagar(k) { await apagar(k); abrirConfigVoz(); },
-    tem: k => !!audios[k],
+    async apagar(k) { for (const x of variantes(k)) await apagar(x); abrirConfigVoz(); },
+    tem: k => variantes(k).length > 0, qtd: k => variantes(k).length,
     setar(o) { Object.assign(cfg, o); salvarCfg(); this.botao(); }
   };
 })();
@@ -1873,11 +1883,34 @@ function abrirConfigVoz() {
     <p><b>Estilo:</b> ${Object.entries(VOZ.ESTILOS).map(([k, e]) => `<label style="margin-right:12px"><input type="radio" name="voz-estilo" value="${k}" ${c.estilo === k ? "checked" : ""}> ${e.nome}</label>`).join("")}</p>
     <p><label><input type="checkbox" id="voz-coment" ${c.coment ? "checked" : ""}> Comentarista depois da narração (destaques e quem está jogando mal, em 1x e 2x)</label></p>
     <p><label><input type="checkbox" id="voz-sons" ${c.sons ? "checked" : ""}> Sons do estádio (apito e torcida)</label> · Volume <input type="range" id="voz-vol" min="0" max="1" step=".05" value="${c.vol}"></p>
-    <table class="tab"><thead><tr><th>Lance</th><th>Gravação</th><th></th></tr></thead><tbody>${VOZ.EVENTOS.map(([k, n]) => `<tr><td>${n}</td><td>${VOZ.tem(k) ? "✅ sua" : "<span class='dica'>frase do jogo</span>"}</td>
+    <p><button class="prim" id="voz-roteiro">📝 Gravar com a minha voz (roteiro)</button> <span class="dica">Leia as frases em voz alta, uma por vez. O jogo passa a narrar com a sua voz.</span></p>
+    <table class="tab"><thead><tr><th>Lance</th><th>Gravação</th><th></th></tr></thead><tbody>${VOZ.EVENTOS.map(([k, n]) => `<tr><td>${n}</td><td>${VOZ.tem(k) ? `✅ ${VOZ.qtd(k)} sua${VOZ.qtd(k) > 1 ? "s" : ""}` : "<span class='dica'>frase do jogo</span>"}</td>
       <td><button data-vz-ouvir="${k}">▶</button> <button data-vz-gravar="${k}">🎙 Gravar</button> <label class="dica" style="cursor:pointer">📁<input type="file" accept="audio/*" data-vz-arq="${k}" hidden></label>${VOZ.tem(k) ? ` <button data-vz-apagar="${k}" title="Voltar à frase do jogo">🗑</button>` : ""}</td></tr>`).join("")}</tbody></table>
     <p class="dica">Use só gravações suas ou que você tenha permissão de usar. As gravações ficam neste navegador.</p>`;
   $("m-voz").classList.add("on");
 }
+// roteiro guiado: mostra uma frase por vez, grava, deixa ouvir e passa para a próxima
+let ROT_I = 0;
+function abrirRoteiro() {
+  const l = VOZ.roteiro(); if (!l.length) return; ROT_I = Math.max(0, Math.min(ROT_I, l.length - 1));
+  const x = l[ROT_I], feitas = l.filter(y => VOZ.temChave(y.chave)).length;
+  $("voz-corpo").innerHTML = `<p class="dica">Frase ${ROT_I + 1} de ${l.length} · ${feitas} gravada${feitas === 1 ? "" : "s"} · estilo ${esc(VOZ.ESTILOS[VOZ.cfg.estilo]?.nome || "")}</p>
+    <div style="font-size:13px;color:var(--fraco)">${x.lance}</div>
+    <div style="font-size:26px;font-weight:800;margin:10px 0 16px;line-height:1.25">“${esc(x.frase)}”</div>
+    <p class="dica">Fale com a empolgação de um narrador. Toque em Gravar, leia a frase e toque em Parar (máximo 6 segundos).</p>
+    <p><button class="prim" id="rot-gravar">🎙 Gravar</button> <button id="rot-ouvir" ${VOZ.temChave(x.chave) ? "" : "disabled"}>▶ Ouvir a minha</button> ${VOZ.temChave(x.chave) ? "✅ gravada" : ""}</p>
+    <p><button id="rot-ant" ${ROT_I ? "" : "disabled"}>◀ Anterior</button> <button id="rot-prox">${ROT_I < l.length - 1 ? "Próxima ▶" : "Concluir ✔"}</button> <button id="rot-sair">Voltar às opções</button></p>`;
+  $("m-voz").classList.add("on");
+}
+$("m-voz").addEventListener("click", e => {
+  const id = e.target.closest("button")?.id, l = VOZ.roteiro();
+  if (id === "voz-roteiro") { ROT_I = Math.max(0, l.findIndex(y => !VOZ.temChave(y.chave))); if (VOZ.cfg.modo !== "gravacoes") VOZ.setar({ modo: "gravacoes" }); abrirRoteiro(); }
+  else if (id === "rot-gravar") VOZ.gravar(l[ROT_I].chave, e.target.closest("button"), abrirRoteiro);
+  else if (id === "rot-ouvir") VOZ.ouvirGravacao(l[ROT_I].chave);
+  else if (id === "rot-ant") { ROT_I--; abrirRoteiro(); }
+  else if (id === "rot-prox") { if (ROT_I < l.length - 1) { ROT_I++; abrirRoteiro(); } else abrirConfigVoz(); }
+  else if (id === "rot-sair") abrirConfigVoz();
+});
 $("voz").onclick = () => abrirConfigVoz(); VOZ.botao();
 $("voz-fechar").onclick = () => $("m-voz").classList.remove("on");
 $("m-voz").addEventListener("change", e => {
