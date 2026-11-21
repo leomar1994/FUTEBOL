@@ -438,6 +438,7 @@
       <button class="prim" id="ver-campo">📺 Ver partida ao vivo</button>
       <button id="abrir-esc">📋 Escalação e tática</button>
       <span class="sep"></span>
+      <button id="voz" title="Narração por voz: desligada · só os lances importantes · tudo">🔇 Voz</button>
       <button id="fim-rapido">⏭ Ir para o resultado</button>
       <button id="nova" hidden>↩ Nova partida</button>
     </div>
@@ -1388,6 +1389,7 @@ function esconderGol() { $("tela-gol").classList.remove("on"); }
 function narrar(cls, html) {
   const d = document.createElement("div"); if (cls) d.className = cls; d.innerHTML = html;
   $("feed").prepend(d); $("narra").innerHTML = html;
+  try { window.VOZ?.falar(cls, html); } catch (e) {}
 }
 
 /* ===================== painéis ===================== */
@@ -1710,15 +1712,55 @@ function alternarPausa() {
   $("pausa").textContent = J.pausado ? "▶ Continuar" : "⏸ Pausar"; $("pausa2").textContent = J.pausado ? "▶" : "⏸";
   atualizarTudo();
 }
-$("pausa").onclick = alternarPausa; $("pausa2").onclick = alternarPausa;
+$("pausa").onclick = () => { alternarPausa(); VOZ.calar(); }; $("pausa2").onclick = () => { alternarPausa(); VOZ.calar(); };
 $("vel").onclick = e => { const b = e.target.closest("button"); if (!b || !J) return; J.vel = Number(b.dataset.v); $("vel").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); };
 $("ver-campo").onclick = () => $("m-campo").classList.add("on");
 $("fechar-campo").onclick = () => $("m-campo").classList.remove("on");
 $("m-campo").onclick = e => { if (e.target.id === "m-campo") $("m-campo").classList.remove("on"); };
 $("tab-meu").onclick = () => { J.aba = "meu"; $("tab-meu").classList.add("on"); $("tab-adv").classList.remove("on"); atualizarTudo(); };
 $("tab-adv").onclick = () => { J.aba = "adv"; $("tab-adv").classList.add("on"); $("tab-meu").classList.remove("on"); atualizarTudo(); };
+/* ---------- NARRAÇÃO POR VOZ (voz do próprio navegador, em português; grátis e sem internet) ----------
+   Desligada · "Lances": gols, chances, defesas, cartões, impedimentos, contra-ataques e apitos · "Tudo": também os passes e dribles.
+   Em 4x só gols, cartões e apitos; em 8x só gols e apitos. "Ir para o resultado" e a pausa calam o narrador. */
+const VOZ = window.VOZ = (() => {
+  const S = window.speechSynthesis, LS = "fut-voz", MODOS = ["off", "lances", "tudo"];
+  let modo = "off"; try { modo = MODOS.includes(localStorage.getItem(LS)) ? localStorage.getItem(LS) : "off"; } catch (e) {}
+  let voz = null;
+  const escolher = () => { const vs = S?.getVoices?.() || []; voz = vs.find(v => /pt[-_]BR/i.test(v.lang) && /google|natural|online|luciana|francisca|antonio|thalita/i.test(v.name)) || vs.find(v => /pt[-_]BR/i.test(v.lang)) || vs.find(v => /^pt/i.test(v.lang)) || null; };
+  if (S) { escolher(); S.onvoiceschanged = escolher; }
+  const IMPORTANTE = /chut|finaliz|bate|cabe[cç]|defend|defesa|espalma|trave|travess|p[eê]nalti|impedimento|contra-ataque|cara a cara|sozinho|escanteio|falta perigosa|cobra a falta|na barreira|cruza na [áa]rea|rompe a linha|sai do gol|abafa|substitui|sai .*entra|machuc|sente e cai/i;
+  const limpar = html => { const d = document.createElement("div"); d.innerHTML = html; let s = d.textContent || "";
+    return s.replace(/^\s*(\d+)'(\+\d+)?\s*/, (m, a) => a === "1" ? "Com 1 minuto, " : `Aos ${a} minutos, `).replace(/(\d+)\s*[×x]\s*(\d+)/g, "$1 a $2").replace(/[🟨🟥⚽🚩⚡🗣📋🔁🚑⏸📺🔴🧱💥❌✅⭐🏆👏]/gu, "").replace(/\s+/g, " ").trim(); };
+  function botao() { const b = $("voz"); if (b) b.textContent = modo === "off" ? "🔇 Voz" : modo === "lances" ? "🔊 Voz: lances" : "🔊 Voz: tudo"; }
+  function dizer(txt, gol) {
+    if (!S || !txt) return;
+    const u = new SpeechSynthesisUtterance(txt); u.lang = voz?.lang || "pt-BR"; if (voz) u.voice = voz;
+    const vel = J?.vel || 1; u.rate = gol ? 1.08 : Math.min(1.5, 1.08 + (vel - 1) * .07); u.pitch = gol ? 1.25 : 1; u.volume = 1;
+    S.speak(u);
+  }
+  return {
+    falar(cls, html) {
+      if (modo === "off" || !S || !J || J.rapido) return;
+      const vel = J.vel || 1, txt = limpar(html); if (!txt) return;
+      const gol = cls === "gol", apito = cls === "apito", cartao = cls === "cartao" || cls === "verm";
+      if (vel >= 8 && !gol && !apito) return;
+      if (vel >= 4 && !gol && !apito && !cartao) return;
+      if (!gol && !apito && !cartao && modo === "lances" && !IMPORTANTE.test(txt)) return;
+      if (gol) { S.cancel(); dizer("Goooooool!", true); dizer(txt.replace(/GOOO+L/gi, "gol"), false); return; }
+      if (S.pending && !apito && !cartao) return;             // não acumula fila: se ainda está falando, pula o lance comum
+      dizer(txt, false);
+    },
+    calar() { try { S?.cancel(); } catch (e) {} },
+    trocar() { modo = MODOS[(MODOS.indexOf(modo) + 1) % MODOS.length]; try { localStorage.setItem(LS, modo); } catch (e) {} botao();
+      if (!S) { alert("Este navegador não tem voz para narrar. Tente o Chrome ou o Edge."); modo = "off"; botao(); return; }
+      this.calar(); if (modo !== "off") dizer(modo === "lances" ? "Narração ligada: lances importantes." : "Narração ligada: todos os lances.", false); },
+    botao
+  };
+})();
+$("voz").onclick = () => VOZ.trocar(); VOZ.botao();
 $("fim-rapido").onclick = () => {                         // simula o resto sem animação
   if (!J || J.fim) return;
+  VOZ.calar();
   if (J.intervalo) { J.intervalo = false; $("aviso-int").style.display = "none"; }
   J.pausado = false; J.rapido = true; if (J.retomar) J.retomar();
   correrAte(() => false);
