@@ -261,6 +261,7 @@ begin
     lc := lc * liga_fator_marcacao(j.fora); lf := lf * liga_fator_marcacao(j.casa);
     v_gc := liga_poisson(lc); v_gf := liga_poisson(lf);
     update liga_jogos set gc = v_gc, gf = v_gf, jogado = true, inicio = now(), fim = now() + interval '16 minutes' where id = j.id;
+    perform liga_xp_clube(j.casa, v_gc, v_gf); perform liga_xp_clube(j.fora, v_gf, v_gc);   -- pontos estilo Cartola viram XP dos jogadores
   end loop;
   if p_turno < 2 then return 'Turno 1 da rodada ' || est.rodada || ' começou.'; end if;
   -- bilheteria e torcida de cada jogo da rodada; obras de estádio que terminam
@@ -891,3 +892,129 @@ revoke all on function public.liga_compromissos(uuid, bigint), public.liga_confl
 grant execute on function public.liga_minha_agenda(), public.liga_torneio_slots(bigint) to authenticated;
 
 -- Para testar sem esperar: select public.liga_rodar_turno(1);  (e 20 min depois, ou na hora: select public.liga_rodar_turno(2);)
+
+-- =====================================================================
+-- XP DOS JOGADORES NO ESTILO CARTOLA
+-- Cada jogo da liga gera scouts para quem jogou (11 titulares e 3 reservas): gols, assistências, desarmes,
+-- finalizações, faltas, cartões, SG, defesas... A pontuação segue a regra do Cartola FC e vira XP
+-- (com o fator de idade: jovens evoluem mais rápido). 100 XP = +1 de força e +1 ponto de habilidade,
+-- que o técnico gasta (liga_gastar_ponto): subir o nível de uma habilidade, aprender uma nova,
+-- corrigir um defeito ou aprender uma posição. A posição aprendida começa com metade da força e
+-- recebe metade da XP (+3 de força a cada 100).
+-- =====================================================================
+alter table public.liga_jogadores add column if not exists xp numeric not null default 0,
+  add column if not exists pts int not null default 0,
+  add column if not exists hab jsonb not null default '{}'::jsonb,
+  add column if not exists aprend jsonb not null default '{"car":[],"sem":[],"pos":[]}'::jsonb,
+  add column if not exists ult_pts numeric;
+alter table public.liga_tecnicos add column if not exists novidades jsonb not null default '[]'::jsonb;
+
+create or replace function public.liga_pois_min(l numeric, p_min numeric) returns int language sql volatile as $$
+  select case when l * p_min / 90 <= 0 then 0 else public.liga_poisson(l * p_min / 90) end $$;
+
+-- pontos de um jogador num jogo simulado (scouts sorteados pela posição)
+create or replace function public.liga_pontos_cartola(p_pos text, p_min numeric, p_meus int, p_deles int, p_g int, p_a int) returns numeric language plpgsql volatile as $$
+declare ds numeric; fs numeric; fc numeric; fin numeric; pts numeric := 0; nfin int; k int; r numeric;
+begin
+  if p_min <= 0 then return 0; end if;
+  ds  := case p_pos when 'ZAG' then 1.8 when 'LD' then 2.0 when 'LE' then 2.0 when 'VOL' then 2.4 when 'MC' then 1.6 when 'MEI' then 1.0 when 'PE' then .9 when 'PD' then .9 when 'CA' then .5 else 0 end;
+  fs  := case p_pos when 'ZAG' then .5 when 'LD' then 1 when 'LE' then 1 when 'VOL' then 1 when 'MC' then 1.2 when 'MEI' then 1.6 when 'PE' then 1.8 when 'PD' then 1.8 when 'CA' then 1.5 else .2 end;
+  fc  := case p_pos when 'ZAG' then 1.3 when 'LD' then 1 when 'LE' then 1 when 'VOL' then 1.6 when 'MC' then 1.2 when 'MEI' then .9 when 'PE' then .8 when 'PD' then .8 when 'CA' then 1.2 else .1 end;
+  fin := case p_pos when 'CA' then 2.2 when 'PE' then 1.5 when 'PD' then 1.5 when 'MEI' then 1.2 when 'MC' then .6 when 'VOL' then .4 when 'ZAG' then .3 when 'LD' then .3 when 'LE' then .3 else 0 end;
+  pts := pts + 8 * p_g + 5 * p_a + 1.5 * liga_pois_min(ds, p_min) + .5 * liga_pois_min(fs, p_min) - .3 * liga_pois_min(fc, p_min);
+  nfin := liga_pois_min(fin, p_min);
+  for k in 1..nfin loop r := random(); pts := pts + case when r < .05 then 3 when r < .45 then 1.2 else .8 end; end loop;
+  if random() < .18 * p_min / 90 then pts := pts - 1; end if;                                  -- cartão amarelo
+  if random() < .012 * p_min / 90 then pts := pts - 3; end if;                                 -- cartão vermelho
+  if p_pos in ('CA','PE','PD') and random() < .35 * p_min / 90 then pts := pts - .1; end if;    -- impedimento
+  if p_pos = 'GOL' then pts := pts + 1.3 * (1 + liga_poisson(2.2)) - p_deles; if random() < .02 then pts := pts + 7; end if; end if;   -- defesas, gols sofridos, pênalti defendido
+  if p_deles = 0 and p_min >= 45 and p_pos in ('GOL','ZAG','LD','LE') then pts := pts + 5; end if;   -- SG
+  return round(pts, 1);
+end $$;
+
+create or replace function public.liga_xp_clube(p_clube text, p_meus int, p_deles int) returns void language plpgsql security definer set search_path = public as $$
+declare jg record; n int := 0; mins numeric; gols jsonb := '{}'; assis jsonb := '{}'; g int; ids bigint[]; pesos numeric[]; tot numeric; r numeric; i int; quem bigint;
+        v_pts numeric; fator numeric; total numeric; ap jsonb; p2 jsonb; n2 int; parte numeric; f2 int; x2 numeric; nf int; nx numeric; ganhos int; msgs jsonb := '[]';
+begin
+  if p_clube is null then return; end if;
+  select array_agg(id order by forca desc, id), array_agg(case pos when 'CA' then 5 when 'PE' then 3 when 'PD' then 3 when 'MEI' then 2.5 when 'MC' then 1 when 'VOL' then .6 when 'LD' then .5 when 'LE' then .5 when 'ZAG' then .4 else 0 end order by forca desc, id)
+    into ids, pesos from (select * from liga_jogadores where clube = p_clube order by forca desc, id limit 11) x;
+  if ids is null then return; end if;
+  -- quem fez os gols (pela posição) e quem deu a assistência
+  for g in 1..greatest(p_meus, 0) loop
+    tot := 0; for i in 1..array_length(pesos, 1) loop tot := tot + pesos[i]; end loop;
+    r := random() * tot; quem := ids[1];
+    for i in 1..array_length(ids, 1) loop r := r - pesos[i]; if r <= 0 then quem := ids[i]; exit; end if; end loop;
+    gols := jsonb_set(gols, array[quem::text], to_jsonb(coalesce((gols->>quem::text)::int, 0) + 1));
+    if random() < .7 then i := 1 + floor(random() * array_length(ids, 1))::int; if ids[i] <> quem then assis := jsonb_set(assis, array[ids[i]::text], to_jsonb(coalesce((assis->>ids[i]::text)::int, 0) + 1)); end if; end if;
+  end loop;
+  for jg in select * from liga_jogadores where clube = p_clube order by forca desc, id limit 14 loop
+    n := n + 1; mins := case when n <= 11 then 90 else 25 end;
+    v_pts := liga_pontos_cartola(jg.pos, mins, p_meus, p_deles, coalesce((gols->>jg.id::text)::int, 0), coalesce((assis->>jg.id::text)::int, 0));
+    fator := case when jg.idade <= 21 then 1.6 when jg.idade <= 25 then 1.25 when jg.idade <= 29 then 1 when jg.idade <= 32 then .7 else .45 end;
+    total := greatest(0, v_pts) * fator;
+    ap := coalesce(jg.aprend, '{"car":[],"sem":[],"pos":[]}'); p2 := coalesce(ap->'pos', '[]'); n2 := jsonb_array_length(p2);
+    if n2 > 0 and total > 0 then                                                    -- metade da XP vai para as posições aprendidas
+      parte := total / 2 / n2; total := total / 2;
+      for i in 0..n2 - 1 loop
+        f2 := coalesce((p2->i->>'f')::int, round(jg.forca / 2.0)::int); x2 := coalesce((p2->i->>'xp')::numeric, 0) + parte;
+        while x2 >= 100 and f2 < jg.forca loop x2 := x2 - 100; f2 := least(jg.forca, f2 + 3);
+          msgs := msgs || jsonb_build_object('t', 'pos', 'nome', jg.nome, 'p', p2->i->>'p', 'f', f2); end loop;
+        p2 := jsonb_set(p2, array[i::text], jsonb_build_object('p', p2->i->>'p', 'f', f2, 'xp', round(x2, 2)));
+      end loop;
+      ap := jsonb_set(ap, '{pos}', p2);
+    end if;
+    nf := jg.forca; nx := jg.xp + total; ganhos := 0;
+    while nx >= 100 loop
+      nx := nx - 100;
+      if nf >= 95 then nx := 99; exit; end if;
+      nf := nf + 1; ganhos := ganhos + 1;
+    end loop;
+    if ganhos > 0 then msgs := msgs || jsonb_build_object('t', 'forca', 'nome', jg.nome, 'f', nf, 'pts', jg.pts + ganhos); end if;
+    update liga_jogadores set xp = round(nx, 2), forca = nf, pts = pts + ganhos, aprend = ap, ult_pts = v_pts where id = jg.id;
+  end loop;
+  if jsonb_array_length(msgs) > 0 then
+    update liga_tecnicos set novidades = (select coalesce(jsonb_agg(v order by o), '[]') from (select v, o from jsonb_array_elements(novidades || msgs) with ordinality e(v, o)
+      order by o desc limit 40) z) where clube = p_clube;
+  end if;
+  perform liga_recalcular_forca(p_clube);
+end $$;
+
+-- o técnico gasta os pontos de habilidade de um jogador do seu clube
+create or replace function public.liga_gastar_ponto(p_jogador bigint, p_acao text, p_alvo text) returns public.liga_jogadores language plpgsql security definer set search_path = public as $$
+declare eu liga_tecnicos; j liga_jogadores; custo int; cur int; ap jsonb;
+  car_pos jsonb := '{"GOL":["ref","ppn","sai"],"ZAG":["des","mar","cab","res"],"LD":["vel","cru","des","res"],"LE":["vel","cru","des","res"],"VOL":["des","mar","pas","res","lon"],"MC":["pas","lon","res","dri","fal"],"MEI":["pas","dri","lon","fal","fin"],"PE":["dri","vel","cru","fin","fal"],"PD":["dri","vel","cru","fin","fal"],"CA":["fin","cab","pen","vel","dri"]}';
+  aprende jsonb := '{"ZAG":["VOL","LD","LE"],"LD":["LE","ZAG"],"LE":["LD","ZAG"],"VOL":["ZAG","MC"],"MC":["VOL","MEI","PE","PD"],"MEI":["MC","PE","PD"],"PE":["PD","MEI","CA"],"PD":["PE","MEI","CA"],"CA":["PD","PE"]}';
+begin
+  select * into eu from liga_tecnicos where user_id = auth.uid();
+  if eu is null or eu.demitido or eu.clube is null then raise exception 'Você não comanda um clube.'; end if;
+  select * into j from liga_jogadores where id = p_jogador for update;
+  if j is null or j.clube is distinct from eu.clube then raise exception 'Esse jogador não é do seu clube.'; end if;
+  custo := case p_acao when 'nivel' then 1 when 'nova' then 3 when 'defeito' then 3 when 'posicao' then 4 else null end;
+  if custo is null then raise exception 'Ação inválida.'; end if;
+  if j.pts < custo then raise exception 'Pontos insuficientes (precisa de %).', custo; end if;
+  ap := coalesce(j.aprend, '{"car":[],"sem":[],"pos":[]}');
+  if p_acao = 'nivel' then
+    if p_alvo not in ('fin','cab','dri','pas','vel','cru','lon','fal','pen','des','mar','ref','ppn','sai','res','per') then raise exception 'Habilidade inválida.'; end if;
+    cur := coalesce((j.hab->>p_alvo)::int, case when j.forca >= 84 then 3 when j.forca >= 76 then 2 else 1 end);
+    if cur >= 5 then raise exception 'Essa habilidade já está no nível máximo.'; end if;
+    update liga_jogadores set hab = jsonb_set(hab, array[p_alvo], to_jsonb(cur + 1)), pts = pts - custo where id = j.id returning * into j;
+  elsif p_acao = 'nova' then
+    if not (car_pos->j.pos) ? p_alvo or (ap->'car') ? p_alvo then raise exception 'Habilidade não disponível para essa posição.'; end if;
+    update liga_jogadores set aprend = jsonb_set(ap, '{car}', coalesce(ap->'car', '[]') || to_jsonb(p_alvo)), pts = pts - custo where id = j.id returning * into j;
+  elsif p_acao = 'defeito' then
+    if p_alvo not in ('ind','fol') or (ap->'sem') ? p_alvo then raise exception 'Defeito inválido.'; end if;
+    update liga_jogadores set aprend = jsonb_set(ap, '{sem}', coalesce(ap->'sem', '[]') || to_jsonb(p_alvo)), pts = pts - custo where id = j.id returning * into j;
+  else
+    if not coalesce(aprende->j.pos, '[]') ? p_alvo then raise exception 'Essa posição não pode ser aprendida.'; end if;
+    if jsonb_array_length(coalesce(ap->'pos', '[]')) >= 2 or exists (select 1 from jsonb_array_elements(coalesce(ap->'pos', '[]')) x where x->>'p' = p_alvo) then raise exception 'Já aprendeu essa posição (ou já tem 2).'; end if;
+    update liga_jogadores set aprend = jsonb_set(ap, '{pos}', coalesce(ap->'pos', '[]') || jsonb_build_object('p', p_alvo, 'f', round(j.forca / 2.0), 'xp', 0)), pts = pts - custo where id = j.id returning * into j;
+  end if;
+  perform liga_recalcular_forca(j.clube);
+  return j;
+end $$;
+create or replace function public.liga_limpar_novidades() returns void language sql security definer set search_path = public as $$
+  update liga_tecnicos set novidades = '[]' where user_id = auth.uid() $$;
+revoke all on function public.liga_xp_clube(text, int, int), public.liga_pontos_cartola(text, numeric, int, int, int, int), public.liga_pois_min(numeric, numeric) from public, anon, authenticated;
+revoke all on function public.liga_gastar_ponto(bigint, text, text), public.liga_limpar_novidades() from public, anon;
+grant execute on function public.liga_gastar_ponto(bigint, text, text), public.liga_limpar_novidades() to authenticated;
