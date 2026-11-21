@@ -910,10 +910,17 @@ function desenhar(agora) {
   const e = J.anim ? lim((agora - J.anim.t0) / (J.anim.dur * MS_POR_SEG / J.vel), 0, 1) : 1, s = e * e * (3 - 2 * e);
   if (J.juiz) {                                              // o árbitro (preto, borda verde-limão)
     const jp = J.juizP || J.juiz, x = (jp.x + (J.juiz.x - jp.x) * s) * K, y = (jp.y + (J.juiz.y - jp.y) * s) * K;
-    cx.beginPath(); cx.arc(x + 2, y + 3, 11, 0, 7); cx.fillStyle = "rgba(0,0,0,.3)"; cx.fill();
-    cx.beginPath(); cx.arc(x, y, 11, 0, 7); cx.fillStyle = "#111"; cx.fill(); cx.lineWidth = 3; cx.strokeStyle = "#c6f432"; cx.stroke();
-    cx.fillStyle = "#c6f432"; cx.font = "bold 11px system-ui"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText("J", x, y + 1);
-    if (J.cenaAte > agora && J.cenas?.[0]) { const c = J.cenas[0][0]; const cor = c.includes("#e01e1e") ? "#e01e1e" : c.includes("#ffd200") ? "#ffd200" : null; if (cor) { cx.fillStyle = cor; cx.fillRect(x + 6, y - 30, 11, 15); cx.strokeStyle = "#000"; cx.lineWidth = 1; cx.strokeRect(x + 6, y - 30, 11, 15); } }
+    // bonequinho com perninhas: as pernas balançam enquanto ele corre atrás do lance
+    cx.save(); cx.translate(x, y); cx.scale(1.45, 1.45); cx.translate(-x, -y);
+    const andando = J.anim && !J.pausado && !(J.cenaAte > agora) && dist(jp, J.juiz) > .5, passo = andando ? Math.sin(agora / 90) : 0;
+    cx.beginPath(); cx.ellipse(x + 2, y + 15, 10, 4, 0, 0, 7); cx.fillStyle = "rgba(0,0,0,.3)"; cx.fill();
+    cx.lineCap = "round"; cx.lineWidth = 4.5; cx.strokeStyle = "#1b1b1b";
+    for (const [lado, sw] of [[-1, passo], [1, -passo]]) { cx.beginPath(); cx.moveTo(x + lado * 3.5, y + 4); cx.lineTo(x + lado * 3.5 + sw * 5, y + 14); cx.stroke();
+      cx.beginPath(); cx.arc(x + lado * 3.5 + sw * 5, y + 15, 2.6, 0, 7); cx.fillStyle = "#c6f432"; cx.fill(); }          // chuteiras verde-limão
+    cx.lineWidth = 3.5; cx.beginPath(); cx.moveTo(x - 7, y - 3); cx.lineTo(x - 11, y + 3 - passo * 3); cx.moveTo(x + 7, y - 3); cx.lineTo(x + 11, y + 3 + passo * 3); cx.stroke();   // braços
+    cx.beginPath(); cx.roundRect ? cx.roundRect(x - 7.5, y - 8, 15, 14, 4) : cx.rect(x - 7.5, y - 8, 15, 14); cx.fillStyle = "#111"; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = "#c6f432"; cx.stroke();
+    cx.beginPath(); cx.arc(x, y - 12.5, 5, 0, 7); cx.fillStyle = "#d9a066"; cx.fill(); cx.lineCap = "butt"; cx.restore();
+    if (J.cenaAte > agora && J.cenas?.[0]) { const c = J.cenas[0][0]; const cor = c.includes("#e01e1e") ? "#e01e1e" : c.includes("#ffd200") ? "#ffd200" : null; if (cor) { cx.fillStyle = cor; cx.fillRect(x + 12, y - 40, 12, 16); cx.strokeStyle = "#000"; cx.lineWidth = 1; cx.strokeRect(x + 12, y - 40, 12, 16); } }
   }
   const sv = J.subVis, es = sv ? lim((agora - sv.t0) / sv.dur, 0, 1) : 1, borda = sv && sv.sai.y < A / 2 ? -3 : A + 3;
   const botao = (x, y, cor, cor2, num, alfa = 1) => { cx.globalAlpha = alfa; cx.beginPath(); cx.arc(x, y, 15, 0, 7); cx.fillStyle = cor; cx.fill(); cx.lineWidth = 4; cx.strokeStyle = cor2; cx.stroke();
