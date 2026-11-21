@@ -203,7 +203,7 @@
         <div class="caixa" style="margin-top:12px"><h2>Resultados da rodada</h2><div class="res-l" id="c-res"></div></div>
         <div class="caixa" style="margin-top:12px"><h2>💰 Finanças</h2><div id="c-fin"></div>
           <p><button id="c-elenco">👥 Elenco e vendas</button> <button class="prim" id="c-mercado">🛒 Mercado de transferências</button></p><div id="c-ofertas"></div></div>
-        <div class="caixa" style="margin-top:12px"><h2>Diretoria</h2><div id="c-dir"></div></div>
+        <div class="caixa" style="margin-top:12px"><h2>Diretoria</h2><div id="c-dir"></div><p><button id="c-msgs">✉️ Mensagens</button></p></div>
       </div>
       <div class="caixa"><div class="abas" id="c-abas"></div><table class="tab"><thead><tr><th>#</th><th>Clube</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr></thead><tbody id="c-tab"></tbody></table>
         <p class="dica"><span style="color:var(--verde)">▌</span> sobem · <span style="color:var(--verm)">▌</span> caem</p>
@@ -215,7 +215,7 @@
   <section id="elenco" class="tela">
     <button class="voltar" data-tela="carreira">↩ Temporada</button>
     <div class="caixa"><h2 id="el-tit">👥 Elenco</h2><div class="dica" id="el-info"></div>
-      <div style="overflow-x:auto"><table><thead><tr><th>Jogador</th><th>Pos</th><th>Idade</th><th>Força</th><th>Valor</th><th>Salário/rodada</th><th></th></tr></thead><tbody id="el-lista"></tbody></table></div><div class="legenda-car"></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Jogador</th><th>Pos</th><th>Idade</th><th>Força</th><th>Energia</th><th>Valor</th><th>Salário/rodada</th><th></th></tr></thead><tbody id="el-lista"></tbody></table></div><div class="legenda-car"></div>
       <p class="dica">"À venda": outros clubes podem fazer propostas a cada rodada. "Vender já": vende na hora por 70% do valor. O elenco precisa ter entre 16 e 35 jogadores.</p></div>
   </section>
 
@@ -383,6 +383,8 @@
   <div id="narra"></div>
 </div></div>
 
+<div class="modal" id="m-msgs"><div class="janela" style="max-width:620px"><h2>✉️ Caixa de mensagens</h2><div class="res-l" id="msgs-lista" style="max-height:60vh;overflow:auto"></div>
+  <p style="text-align:right"><button id="msgs-fechar">Fechar</button></p></div></div>
 <div id="cena" aria-live="polite"><div class="cena-caixa" id="cena-caixa"></div></div>
 <div id="tela-gol" aria-live="assertive"><div class="gol-caixa"><div class="gol-txt">GOOOL!</div><div class="gol-time" id="gol-time"></div><div class="gol-autor" id="gol-autor"></div></div></div>
 <div class="modal" id="m-esc"><div class="janela" style="width:min(1060px,100%)">
@@ -504,6 +506,7 @@ function iniciarPartida() {
         posse: null, dono: null, bola: { x: L / 2, y: A / 2 }, anim: null, aba: "meu", ult: null, passeDe: null, acrescimo: [Math.floor(entre(1, 4)), Math.floor(entre(2, 6))] };
   J.posse = J.casa; J.dono = meio(J.casa); ajustarUniformes();
   posicionar(); J.bola = { x: L / 2, y: A / 2 }; congelarPos();
+  if (MODO_CARREIRA && C) { ajustarFisico(meu, meuBase.id); ajustarFisico(adv, advBase.id); }
   J.carreira = MODO_CARREIRA; MODO_CARREIRA = null; J.amistosoOn = AMISTOSO_ON; AMISTOSO_ON = false; tela("partida");
   $("feed").innerHTML = ""; $("nova").hidden = true; $("fim-rapido").disabled = false; $("aviso-int").style.display = "none";
   $("t-casa").innerHTML = escudo(J.casa) + esc(J.casa.nome); $("t-fora").innerHTML = esc(J.fora.nome) + escudo(J.fora);
@@ -573,6 +576,7 @@ const cobrador = (t, tipo) => ativos(t).filter(p => p.papel !== "GOL" && (["MEI"
 function nota(p, d) { if (p) p.nota = lim(p.nota + d, 2, 10); }
 function proximoLance() {
   if (!J || J.fim) return;
+  if (!J.replay && !J.rapidoSemLesao && checarLesao()) return fazerLance(30, { ...J.bola }, null, "");
   if (J.roteiro) {                                          // replay: gol marcado para este minuto e ainda não saiu → contra-ataque
     const g = J.roteiro.find(x => !x.feito && minuto() >= x.min + 1);
     if (g) {
@@ -816,6 +820,27 @@ function encerrar() {
   if (J.replay) rnd = Math.random;
   atualizarTudo();
 }
+/* contusão: mais chance com pouco fôlego, energia baixa antes do jogo e marcação pesada do rival */
+function checarLesao() {
+  const dur = 6;
+  for (const t of [J.casa, J.fora]) for (const p of ativos(t)) {
+    const o = rival(t);
+    const chance = .03 * dur / 5400 * (p.folego < 35 ? 2.4 : p.folego < 60 ? 1.4 : 1) * ((p.energiaIni ?? 100) < 60 ? 1.8 : (p.energiaIni ?? 100) < 80 ? 1.25 : 1)
+      * (o.marcacao === "mpesado" ? 1.4 : o.marcacao === "pesado" ? 1.2 : 1) * (p.papel === "GOL" ? .4 : 1);
+    if (rnd() >= chance) continue;
+    const rod = 1 + Math.floor(Math.pow(rnd(), 2) * 7);
+    p.lesao = rod; (J.lesoes ||= []).push({ t, p, rod });
+    narrar("verm", `${minutoTxt()}🚑 ${p.nome} (${t.curto}) sente e cai no gramado. Não tem condições de continuar${rod > 1 ? ` — deve ficar fora por ${rod} jogos` : ""}.`);
+    const livres = t.banco.filter(b => !b.saiu && !b.entrou && !b.lesao && !(t.pend || []).some(x => x.entra === b));
+    const sub = livres.sort((a, b) => (PARECE[p.papel].indexOf(a.pos) < 0) - (PARECE[p.papel].indexOf(b.pos) < 0) || b.forca - a.forca)[0];
+    t.pend = (t.pend || []).filter(x => x.sai !== p);
+    if (sub && t.subs + t.pend.length < 5) { t.pend.unshift({ sai: p, entra: sub }); bolaParada("lesao"); }
+    else if (sub && t.subs < 5) { t.pend.pop(); t.pend.unshift({ sai: p, entra: sub }); bolaParada("lesao"); }
+    else { p.fora = true; p.minSaiu = minuto(); if (J.dono === p) J.dono = perto(t, J.bola) || goleiro(t); narrar("verm", `${minutoTxt()}Sem substituições: o ${t.nome} fica com ${ativos(t).length}.`); }
+    atualizarTudo(); return true;
+  }
+  return false;
+}
 /* substituição pedida espera a bola parar: falta, lateral, tiro de meta, escanteio, gol ou intervalo (como na vida real) */
 function pedirSub(t, sai, entra) {
   t.pend ||= [];
@@ -844,8 +869,8 @@ function iaSubstitui(t) {                                  // o técnico advers�
 }
 function substituir(t, sai, entra) {
   const i = t.jog.indexOf(sai); if (i < 0 || t.subs >= 5) return false;
-  Object.assign(entra, { papel: sai.papel, bx: sai.bx, by: sai.by, x: sai.x, y: sai.y, px: sai.x, py: sai.y, entrou: true });
-  sai.saiu = true; sai.fora = true;
+  Object.assign(entra, { papel: sai.papel, bx: sai.bx, by: sai.by, x: sai.x, y: sai.y, px: sai.x, py: sai.y, entrou: true, minEntrou: minuto() });
+  sai.saiu = true; sai.fora = true; sai.minSaiu = minuto();
   t.jog[i] = entra; t.banco = t.banco.filter(p => p !== entra); t.banco.push(sai); t.subs++;
   if (J.dono === sai) J.dono = entra;
   narrar("", `${minutoTxt()}🔁 ${t.curto}: sai ${sai.nome} (nota ${sai.nota.toFixed(1)}), entra ${entra.nome}.`);
@@ -1039,7 +1064,7 @@ function abrirEscalacao(modo) {
   ESC_MODO = modo;
   if (modo === "pre") {
     const base = TIMES.find(x => x.id === $("sel-meu").value);
-    if (!ESC_TIME || ESC_TIME.base !== base) { ESC_TIME = montarTime(base, $("sel-form").value, $("sel-estilo").value, "casa"); if (MODO_CARREIRA && C && T()?.tatica) aplicarTatica(ESC_TIME, T().tatica); }
+    if (!ESC_TIME || ESC_TIME.base !== base) { ESC_TIME = montarTime(base, $("sel-form").value, $("sel-estilo").value, "casa"); if (MODO_CARREIRA && C && T()?.tatica) aplicarTatica(ESC_TIME, T().tatica); if (MODO_CARREIRA && C) ajustarFisico(ESC_TIME, base.id); }
   }
   const t = timeEsc();
   $("esc-form").innerHTML = [...Object.keys(FORMACOES), ...(FORMACOES[t.formacao] ? [] : [t.formacao])].map(f => `<option>${f}</option>`).join("");
@@ -1062,9 +1087,9 @@ function desenharEscalacao() {
   pr.innerHTML = linhas + t.jog.map((p, i) => `<div class="dot ${p.fora ? "morto" : ""}" data-slot="${i}" style="left:${(p.by * 100).toFixed(1)}%;top:${((1 - p.bx) * 100).toFixed(1)}%;--anel:${corAdapt(p)}">
       <div class="c" style="background:${p.papel === "GOL" ? "#e9c46a" : t.cor};border-color:${t.cor2};color:${p.papel === "GOL" ? "#222" : t.cor2}">${p.num}</div>
       <div class="nm">${esc(p.nome)}</div><div class="pp">${p.papel}${p.pos !== p.papel ? " (" + p.pos + ")" : ""}</div></div>`).join("");
-  const lj = (p, tipo) => `<div class="lj ${tipo} ${p.saiu || p.fora ? "saiu" : ""}" data-jog="${p.id}"><b>${p.num}</b><span>${esc(p.nome)} ${carHtml(p.car)}${p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : ""}${p.saiu ? " (saiu)" : ""}${J && ESC_MODO === "jogo" && !p.saiu && tipo === "tit" ? ` <small class="dica">nota ${p.nota.toFixed(1)} · fôlego ${Math.round(p.folego)}%</small>` : ""}</span><span class="pos">${p.pos}</span><span class="f">${p.forca}</span></div>`;
+  const lj = (p, tipo) => `<div class="lj ${tipo} ${p.saiu || p.fora ? "saiu" : ""}" data-jog="${p.id}"><b>${p.num}</b><span>${esc(p.nome)} ${carHtml(p.car)}${p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : ""}${p.saiu ? " (saiu)" : ""}${J && ESC_MODO === "jogo" && !p.saiu && tipo === "tit" ? ` <small class="dica">nota ${p.nota.toFixed(1)} · fôlego ${Math.round(p.folego)}%</small>` : ""}${ESC_MODO === "pre" && p.energiaIni != null ? ` <small class="dica">⚡${p.energiaIni}%</small> ${barraEnergia(p.energiaIni)}` : ""}</span><span class="pos">${p.pos}</span><span class="f">${p.forca}</span></div>`;
   $("esc-tit-l").innerHTML = t.jog.map(p => lj(p, "tit")).join("");
-  $("esc-res-l").innerHTML = t.banco.map(p => lj(p, "res")).join("") || "<p class='dica'>Sem reservas.</p>";
+  $("esc-res-l").innerHTML = t.banco.map(p => lj(p, "res")).join("") + ((t.lesionados || []).length ? `<p class="dica" style="margin-top:8px">🚑 Contundidos (fora): ${t.lesionados.map(p => `${esc(p.nome)} (${p.lesao} jogo${p.lesao > 1 ? "s" : ""})`).join(", ")}</p>` : "") || "<p class='dica'>Sem reservas.</p>";
 }
 function trocarNaEscalacao(a, b) {                        // a e b: jogadores (titular ou reserva) — troca de lugar
   const t = timeEsc(), ia = t.jog.indexOf(a), ib = t.jog.indexOf(b);
@@ -1142,6 +1167,9 @@ $("esc-cancelar").onclick = () => { $("m-esc").classList.remove("on"); MODO_CARR
 let ESC_SALVAR = false;
 
 /* ===================== controles ===================== */
+function garantirOpcao(id) {                              // clubes de estaduais/exterior não ficam na lista, mas podem ser adversários na carreira
+  for (const sel of ["sel-meu", "sel-adv"]) if (![...$(sel).options].some(o => o.value === id)) $(sel).insertAdjacentHTML("beforeend", `<option value="${esc(id)}">${esc(nomeTime(id))}</option>`);
+}
 function popular() {
   const grupos = {}; for (const t of TIMES) if (t.div !== "Estaduais") (grupos[t.div || "Exemplo"] ||= []).push(t);
   const op = Object.entries(grupos).map(([g, l]) => `<optgroup label="${esc(g)}">${l.sort((a, b) => a.nome.localeCompare(b.nome)).map(t => `<option value="${t.id}">${esc(t.nome)}${t.real === false ? " *" : ""}</option>`).join("")}</optgroup>`).join("");
@@ -1469,22 +1497,92 @@ $("c-jogar").onclick = () => {
   const tec = T(), j = jogoDe(tec); if (!j) return;
   const [casa, fora] = j, eu = casa === tec.clube;
   popular();
+  garantirOpcao(casa); garantirOpcao(fora);
   $("sel-meu").value = tec.clube; $("sel-adv").value = eu ? fora : casa; $("sel-mando").value = eu ? "casa" : "fora";
   ESC_TIME = null; MODO_CARREIRA = { rodada: C.rodada }; abrirEscalacao("pre");
 };
 $("c-esc").onclick = () => {
   const tec = T(), j = jogoDe(tec); popular();
+  garantirOpcao(tec.clube); if (j) { garantirOpcao(j[0]); garantirOpcao(j[1]); }
   $("sel-meu").value = tec.clube; if (j) { const eu = j[0] === tec.clube; $("sel-adv").value = eu ? j[1] : j[0]; $("sel-mando").value = eu ? "casa" : "fora"; }
   ESC_TIME = null; ESC_SALVAR = true; MODO_CARREIRA = { rodada: C.rodada }; abrirEscalacao("pre");
 };
-function forcaEscalada(id) {                              // força do time com a escalação salva pelo técnico (para simular)
-  const tec = C && C.tecnicos.find(x => !x.demitido && x.clube === id), t = timePorId(id);
-  if (!tec?.tatica) return forcaTime(t);
-  const xi = tec.tatica.jog.map(s => [s, t.jogadores.find(j => j[0] === s.nome)]).filter(x => x[1]);
-  if (xi.length < 11) return forcaTime(t);
-  return xi.reduce((a, [s, j]) => a + j[2] - ((PARECE[s.papel] || []).indexOf(j[1]) === 0 ? 0 : (PARECE[s.papel] || []).includes(j[1]) ? 3 : 9), 0) / 11;
+/* ===================== energia, contusões e caixa de mensagens (carreira) =====================
+   Energia (0–100) de cada jogador dos clubes dos técnicos: quem joga perde (≈22 por jogo inteiro), todo mundo recupera
+   um pouco a cada data e quem descansa recupera mais. Entra no jogo com fôlego = energia. Contundido fica fora N jogos. */
+const fisDe = (clube, nome) => { C.fis ||= {}; const c = (C.fis[clube] ||= {}); return (c[nome] ||= { e: 100, les: 0 }); };
+const energia = (clube, nome) => C?.fis?.[clube]?.[nome]?.e ?? 100;
+const lesao = (clube, nome) => C?.fis?.[clube]?.[nome]?.les || 0;
+const corEnergia = e => e > 70 ? "var(--verde)" : e > 45 ? "var(--amar)" : "var(--verm)";
+const barraEnergia = e => `<span class="folego" title="Energia ${Math.round(e)}%"><i style="width:${Math.round(e)}%;background:${corEnergia(e)}"></i></span>`;
+function ajustarFisico(t, clube) {                        // tira os contundidos e começa cada um com o fôlego = energia
+  if (!C || !clube || !tecDe(clube)) return;
+  for (const p of [...t.jog, ...t.banco]) { p.lesao = lesao(clube, p.nome); p.energiaIni = energia(clube, p.nome); p.folego = Math.max(25, p.energiaIni); }
+  t.jog.forEach((p, i) => { if (!p.lesao) return;
+    const sub = t.banco.filter(b => !b.lesao).sort((a, b) => (PARECE[p.papel].indexOf(a.pos) < 0) - (PARECE[p.papel].indexOf(b.pos) < 0) || b.forca - a.forca)[0];
+    if (sub) { Object.assign(sub, { papel: p.papel, bx: p.bx, by: p.by }); t.jog[i] = sub; t.banco = t.banco.filter(x => x !== sub); } });
+  t.lesionados = [...(t.lesionados || []), ...[...t.jog, ...t.banco].filter(p => p.lesao)];
+  t.jog = t.jog.filter(p => !p.lesao); t.banco = t.banco.filter(p => !p.lesao);
+  while (t.jog.length < 11 && t.banco.length) t.jog.push(Object.assign(t.banco.shift(), { papel: "MC", bx: .5, by: .5 }));
 }
-function fimDoJogoCarreira(fim) { decidirMeuJogo([fim.casa.gols, fim.fora.gols]); }
+function xiSimulado(id, tec) {                           // quem joga quando o jogo é simulado: a escalação salva, sem contundidos; muito cansado é poupado
+  const t = timePorId(id), sauda = t.jogadores.filter(j => !lesao(id, j[0]));
+  let xi = tec?.tatica ? tec.tatica.jog.map(s => [s.papel, sauda.find(j => j[0] === s.nome)]).filter(x => x[1]) : [];
+  if (xi.length < 11) xi = sauda.slice().sort((a, b) => b[2] - a[2]).slice(0, 11).map(j => [j[1], j]);
+  return xi.map(([papel, j]) => {
+    if (energia(id, j[0]) >= 40) return [papel, j];
+    const r = sauda.filter(x => !xi.some(y => y[1] === x) && energia(id, x[0]) >= 65 && (PARECE[papel] || []).includes(x[1])).sort((a, b) => b[2] - a[2])[0];
+    if (r) { xi = xi.map(y => y[1] === j ? [papel, r] : y); return [papel, r]; }
+    return [papel, j];
+  });
+}
+function forcaEscalada(id) {                              // força para simular: escalação salva, sem contundidos e pesando a energia
+  const tec = C && C.tecnicos.find(x => !x.demitido && x.clube === id), t = timePorId(id);
+  if (!tec) return forcaTime(t);
+  const xi = xiSimulado(id, tec).map(([papel, j]) => [{ papel }, j]);
+  if (!xi.length) return 45;
+  return xi.reduce((a, [s, j]) => a + j[2] * (0.86 + 0.14 * energia(id, j[0]) / 100) - ((PARECE[s.papel] || []).indexOf(j[1]) === 0 ? 0 : (PARECE[s.papel] || []).includes(j[1]) ? 3 : 9), 0) / xi.length - (11 - Math.min(11, xi.length)) * 3;
+}
+function fimDoJogoCarreira(fim) {
+  for (const t of [fim.casa, fim.fora]) {                  // guarda minutos jogados e contusões para quando a data for fechada
+    const id = t.base?.id; if (!tecDe(id)) continue;
+    const min = {}; for (const p of [...t.jog, ...t.banco.filter(b => b.saiu)]) { const m = (p.minSaiu ?? 90) - (p.minEntrou ?? 0); if (m > 0) min[p.nome] = Math.min(90, m); }
+    (C.fisPend ||= {})[id] = { min, les: (fim.lesoes || []).filter(x => x.t === t).map(x => [x.p.nome, x.rod]) };
+  }
+  decidirMeuJogo([fim.casa.gols, fim.fora.gols]);
+}
+function fisicoDaData(jogos) {                           // depois de cada data: gasto de quem jogou, recuperação, contusões
+  for (const tec of C.tecnicos) {
+    if (tec.demitido) continue;
+    const id = tec.clube, t = timePorId(id), jogou = jogos.some(m => m.casa === id || m.fora === id);
+    const cf = fisDe.bind(null, id), msgs = [];
+    for (const j of t.jogadores) { const f = cf(j[0]); if (f.les > 0) { f.les--; if (!f.les) msgs.push(`✅ ${j[0]} se recuperou da contusão e está liberado para jogar.`); } }
+    let min = {}, les = [];
+    if (jogou) {
+      const pend = C.fisPend?.[id];
+      if (pend) { min = pend.min; les = pend.les; delete C.fisPend[id]; }
+      else {                                                // jogo simulado: os 11 da escalação (ou os melhores) jogam; 3 reservas entram
+        const sauda = t.jogadores.filter(j => !cf(j[0]).les), xi = xiSimulado(id, tec).map(x => x[1]);
+        for (const j of xi) min[j[0]] = 90;
+        for (const j of sauda.filter(j => !xi.includes(j)).sort((a, b) => b[2] - a[2]).slice(0, 3)) min[j[0]] = 25;
+        for (const j of xi) { const e = cf(j[0]).e; if (Math.random() < .03 * (e < 60 ? 1.8 : e < 80 ? 1.25 : 1)) les.push([j[0], 1 + Math.floor(Math.pow(Math.random(), 2) * 7)]); }
+      }
+    }
+    for (const j of t.jogadores) {
+      const f = cf(j[0]), m = min[j[0]] || 0;
+      f.e = Math.round(lim(f.e - (m ? 8 + 14 * m / 90 : 0) + 11 + (m ? 0 : 7), 15, 100));
+    }
+    for (const [nome, rod] of les) { cf(nome).les = Math.max(cf(nome).les, rod); msgs.push(`🚑 ${nome} se machucou e deve ficar fora por ${rod} jogo${rod > 1 ? "s" : ""}.`); }
+    const cansados = t.jogadores.filter(j => !cf(j[0]).les && cf(j[0]).e < 50).map(j => j[0]);
+    if (jogou && cansados.length) msgs.push(`⚡ Energia baixa: ${cansados.slice(0, 5).join(", ")}${cansados.length > 5 ? "…" : ""}. Jogadores cansados rendem menos e se machucam mais — pense em poupar.`);
+    for (const m of msgs) (C.avisosData[tec.nome] ||= []).push(m);
+  }
+}
+function mensagem(tec, txt) {
+  (tec.msgs ||= []).unshift({ txt, quando: `${C.temporada} · ${rotuloData()}`, lida: false });
+  tec.msgs = tec.msgs.slice(0, 80);
+}
+const rotuloData = () => { const ev = C.agenda?.[Math.max(0, (C.data || 1) - 1)]; return ev?.t === "L" ? `rodada ${C.rodada}` : ev ? { EST: "estadual", CB: "Copa do Brasil", REG: "regional", LIB: "Libertadores", MUN: "Mundial" }[ev.t] || "" : "pré-temporada"; };
 function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, marcacao: t.marcacao, jogada: t.jogada, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
 function aplicarTatica(t, tat) {                         // repete a escalação da última partida (quem ainda estiver no elenco)
   const todos = [...t.jog, ...t.banco], novo = [];
@@ -1722,6 +1820,7 @@ function resolverData(ev) {
   }
   if (ev.t === "MUN" && K.mun) { for (const j of jogos) if (K.mun.fase < 2) premioMundialEliminado(K.mun, j); avancarMata(K.mun, jogos, "MUN"); }
   financasDaData(ev, jogos);
+  fisicoDaData(jogos);
   C.pend = {};
 }
 const temHumano = ev => jogosDaData(ev).some(m => humanosAtivos().some(t => t.clube === m.casa || t.clube === m.fora));
@@ -1733,6 +1832,7 @@ var jogarRodada = function () {
     if (C.data >= C.agenda.length) { encerrarTemporada(); break; }
   } while (dataAtual().t !== "L" && !temHumano(dataAtual()));
   for (const tec of C.tecnicos) if (C.avisosData[tec.nome]) tec.avisos = [...(tec.avisos || []), ...C.avisosData[tec.nome]];
+  for (const tec of C.tecnicos) { const vistos = new Set((tec.msgs || []).slice(0, 12).map(m => m.txt)); for (const a of tec.avisos || []) if (!vistos.has(a)) mensagem(tec, a); }
   delete C.avisosData;
   C.vez = 0; salvar(); abrirCarreira();
 };
@@ -1835,6 +1935,7 @@ const _abrirCarreira = abrirCarreira;
 abrirCarreira = function () {
   _abrirCarreira(); if (!C) return;
   desenharComp();
+  const nl = (T().msgs || []).filter(m => !m.lida).length; $("c-msgs").textContent = `✉️ Mensagens${nl ? ` (${nl} nova${nl > 1 ? "s" : ""})` : ""}`; $("c-msgs").classList.toggle("prim", nl > 0);
   const tec = T();
   if (tec.demitido) { $("c-fin").innerHTML = "<p class='dica'>Sem clube no momento.</p>"; $("c-elenco").hidden = $("c-mercado").hidden = true; $("c-ofertas").innerHTML = ""; return; }
   $("c-elenco").hidden = $("c-mercado").hidden = false;
@@ -1871,7 +1972,7 @@ function abrirElenco() {
   $("el-tit").textContent = `👥 Elenco — ${t.nome}`;
   $("el-info").textContent = `Caixa ${dinheiro(f.caixa)} · ${t.jogadores.length} jogadores · folha por rodada ${dinheiro(folha(t))}`;
   $("el-lista").innerHTML = t.jogadores.slice().sort((a, b) => ordem.indexOf(a[1]) - ordem.indexOf(b[1]) || b[2] - a[2]).map(j => { const v = f.venda.includes(j[0]);
-    return `<tr><td>${esc(j[0])}${v ? " <span class='dica'>(à venda)</span>" : ""}<br>${carJog(j)}</td><td>${j[1]}</td><td>${j[3]}</td><td><b>${j[2]}</b></td><td>${dinheiro(valorJog(j))}</td><td>${dinheiro(salarioJog(j))}</td>
+    return `<tr><td>${esc(j[0])}${v ? " <span class='dica'>(à venda)</span>" : ""}<br>${carJog(j)}</td><td>${j[1]}</td><td>${j[3]}</td><td><b>${j[2]}</b></td><td>${lesao(tec.clube, j[0]) ? `🚑 ${lesao(tec.clube, j[0])} jogo(s)` : `${barraEnergia(energia(tec.clube, j[0]))} ${energia(tec.clube, j[0])}%`}</td><td>${dinheiro(valorJog(j))}</td><td>${dinheiro(salarioJog(j))}</td>
       <td><button data-el-venda="${esc(j[0])}">${v ? "Tirar da venda" : "À venda"}</button> <button data-el-ja="${esc(j[0])}">Vender já</button></td></tr>`; }).join("");
   tela("elenco");
 }
@@ -2325,6 +2426,12 @@ document.addEventListener("click", e => { const b = e.target.closest("[data-repl
 
 $("mc-car").innerHTML += Object.entries(CAR).filter(([k]) => k !== "ind" && k !== "fol").map(([k, [n]]) => `<option value="${k}">${n}</option>`).join("");
 document.querySelectorAll(".legenda-car").forEach(d => d.innerHTML = LEGENDA_CAR);
+$("c-msgs").onclick = () => {
+  const tec = T(), l = tec.msgs || [];
+  $("msgs-lista").innerHTML = l.map(m => `<div style="padding:6px 0;border-bottom:1px solid var(--borda)">${m.lida ? "" : "🔵 "}<span class="dica">${esc(m.quando)}</span><br>${m.lida ? esc(m.txt) : `<b>${esc(m.txt)}</b>`}</div>`).join("") || "<p class='dica'>Nenhuma mensagem ainda.</p>";
+  for (const m of l) m.lida = true; salvar(); $("m-msgs").classList.add("on");
+};
+$("msgs-fechar").onclick = () => { $("m-msgs").classList.remove("on"); abrirCarreira(); };
 tela("menu");
 
 </script>
