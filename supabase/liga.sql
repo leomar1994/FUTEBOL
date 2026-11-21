@@ -262,6 +262,9 @@ begin
     update liga_jogos set gc = v_gc, gf = v_gf, jogado = true, inicio = now(), fim = now() + interval '16 minutes' where id = j.id;
   end loop;
   if p_turno < 2 then return 'Turno 1 da rodada ' || est.rodada || ' começou.'; end if;
+  -- bilheteria e torcida de cada jogo da rodada; obras de estádio que terminam
+  perform liga_bilheteria(x.id) from liga_jogos x where x.temporada = est.temporada and x.rodada = est.rodada and x.publico is null;
+  update liga_clubes set capacidade = least(100000, capacidade + 5000), obra_ate = null where obra_ate is not null and obra_ate <= est.rodada;
   -- cota de TV da rodada entra no caixa de cada clube; a folha salarial sai
   update liga_clubes c set caixa = round(coalesce(caixa, 0) + case c.div when 'A' then 1.5 when 'B' then 0.6 when 'C' then 0.25 else 0.12 end
     - coalesce((select sum(jg.salario) from liga_jogadores jg where jg.clube = c.id), 0), 2);
@@ -773,5 +776,68 @@ grant execute on function public.liga_leiloar(bigint), public.liga_lance(bigint)
 do $$ begin perform cron.unschedule('liga-leiloes'); exception when others then null; end $$;
 select cron.schedule('liga-leiloes', '* * * * *', $$select public.liga_leiloes_rodar()$$);
 select public.liga_gerar_elencos();
+
+-- =====================================================================
+-- ESTÁDIO, TORCIDA E BILHETERIA (liga online)
+-- público = capacidade × ocupação (torcida e preço); renda = público × preço; ampliar custa tokens (obra de 3 rodadas)
+-- =====================================================================
+alter table public.liga_clubes add column if not exists capacidade int, add column if not exists preco int, add column if not exists torcida int not null default 60,
+  add column if not exists ampliacoes int not null default 0, add column if not exists obra_ate int;
+update public.liga_clubes c set capacidade = round((case div when 'A' then 42000 when 'B' then 22000 when 'C' then 12000 else 6000 end)
+  * (0.75 + (forca - (select min(forca) from public.liga_clubes x where x.div = c.div)) / greatest(1, (select max(forca) - min(forca) from public.liga_clubes x where x.div = c.div)) * 0.55) / 500) * 500
+  where capacidade is null;
+update public.liga_clubes set preco = case div when 'A' then 60 when 'B' then 40 when 'C' then 25 else 15 end where preco is null;
+alter table public.liga_jogos add column if not exists publico int, add column if not exists renda numeric;
+
+create or replace function public.liga_preco_base(p_div text) returns int language sql immutable as $$ select case p_div when 'A' then 60 when 'B' then 40 when 'C' then 25 else 15 end $$;
+
+-- bilheteria e torcida de um jogo já decidido (chamada pela rodada)
+create or replace function public.liga_bilheteria(p_jogo bigint) returns void language plpgsql security definer set search_path = public as $$
+declare g liga_jogos; c liga_clubes; r numeric; ocup numeric; pub int; ren numeric;
+begin
+  select * into g from liga_jogos where id = p_jogo;
+  select * into c from liga_clubes where id = g.casa for update;
+  r := c.preco::numeric / liga_preco_base(c.div);
+  ocup := least(1, greatest(0.06, (0.22 + 0.62 * c.torcida / 100.0) * power(1 / r, case when r > 1 then 1.35 else 0.45 end) * (0.94 + random() * 0.12)));
+  pub := least(c.capacidade, round(c.capacidade * ocup)::int);
+  ren := round(pub * c.preco / 1e6, 2);
+  update liga_jogos set publico = pub, renda = ren where id = g.id;
+  update liga_clubes set caixa = coalesce(caixa, 0) + ren,
+    torcida = greatest(0, torcida - case when r > 1.4 then 1 else 0 end) where id = c.id;
+  update liga_clubes x set torcida = least(100, greatest(0, x.torcida + case
+      when (x.id = g.casa and g.gc > g.gf) or (x.id = g.fora and g.gf > g.gc) then case when abs(g.gc - g.gf) >= 3 then 5 else 3 end
+      when g.gc = g.gf then -1 else -4 end))
+    where x.id in (g.casa, g.fora);
+end $$;
+
+-- ampliar o estádio: +5.000 lugares, custa tokens (10, 16, 22…), obra pronta em 3 rodadas
+create or replace function public.liga_ampliar_estadio() returns int language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); eu liga_tecnicos; c liga_clubes; custo int; rod int;
+begin
+  select * into eu from liga_tecnicos where user_id = uid for update;
+  if eu.clube is null then raise exception 'Você precisa estar num clube.'; end if;
+  select * into c from liga_clubes where id = eu.clube for update;
+  if c.obra_ate is not null then raise exception 'Já tem uma obra em andamento.'; end if;
+  if c.capacidade >= 100000 then raise exception 'O estádio já está no tamanho máximo.'; end if;
+  custo := 10 + 6 * c.ampliacoes;
+  if eu.tokens < custo then raise exception 'Faltam tokens: precisa de %, você tem %.', custo, eu.tokens; end if;
+  select rodada into rod from liga_estado where id = 1;
+  update liga_tecnicos set tokens = tokens - custo where user_id = uid;
+  update liga_clubes set ampliacoes = ampliacoes + 1, obra_ate = rod + 3 where id = c.id;
+  return custo;
+end $$;
+
+create or replace function public.liga_definir_preco(p_preco int) returns void language plpgsql security definer set search_path = public as $$
+declare eu liga_tecnicos;
+begin
+  select * into eu from liga_tecnicos where user_id = auth.uid();
+  if eu.clube is null then raise exception 'Você precisa estar num clube.'; end if;
+  if p_preco not between 5 and 500 then raise exception 'Escolha um preço entre R$ 5 e R$ 500.'; end if;
+  update liga_clubes set preco = p_preco where id = eu.clube;
+end $$;
+
+revoke all on function public.liga_bilheteria(bigint) from public, anon, authenticated;
+revoke all on function public.liga_ampliar_estadio(), public.liga_definir_preco(int) from public, anon;
+grant execute on function public.liga_ampliar_estadio(), public.liga_definir_preco(int) to authenticated;
 
 -- Para testar sem esperar: select public.liga_rodar_turno(1);  (e 20 min depois, ou na hora: select public.liga_rodar_turno(2);)

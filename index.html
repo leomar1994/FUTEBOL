@@ -278,6 +278,9 @@
             <div class="ft"><label>Marcação</label><select id="on-marcacao"><option value="leve">Leve (poucas faltas, desarma menos)</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado (desarma muito, mais cartões)</option></select></div>
             <div class="ft"><label>Jogadas</label><select id="on-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></div>
             <p><button class="prim" id="on-tatica">💾 Salvar tática</button> <span class="dica" id="on-msg-tat"></span></p></div>
+          <div class="caixa" style="margin-top:12px" id="est-on-box"><h2>🏟 Estádio e torcida</h2><div id="est-on-info"></div>
+            <div class="ft"><label>Preço do ingresso (R$)</label><input type="text" id="est-on-preco" inputmode="numeric" style="max-width:110px"> <button id="est-on-salvar">Salvar preço</button></div>
+            <p><button id="est-on-ampliar"></button> <span class="dica" id="est-on-msg"></span></p></div>
           <div class="caixa" style="margin-top:12px" id="el-on-box"><h2>👥 Elenco e contratos</h2>
             <p class="dica" id="el-on-info"></p><div style="overflow-x:auto"><table class="tab"><thead><tr><th>Pos</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Salário/rodada</th><th>Contrato</th><th></th></tr></thead><tbody id="el-on-lista"></tbody></table></div><div class="legenda-car"></div></div>
           <div class="caixa" style="margin-top:12px" id="lei-box"><h2>🔨 Leilão</h2>
@@ -2181,6 +2184,8 @@ const ONAPI = {
   async leiloes() { const r = await SB.from("liga_leiloes").select("*, j:liga_jogadores(*)").eq("status", "aberto").order("fim").limit(200); return r.error ? [] : r.data; },
   async leiloar(id) { const r = await SB.rpc("liga_leiloar", { p_jogador: id }); if (r.error) throw r.error; },
   async lance(id) { const r = await SB.rpc("liga_lance", { p_leilao: id }); if (r.error) throw r.error; return r.data; },
+  async preco(v) { const r = await SB.rpc("liga_definir_preco", { p_preco: v }); if (r.error) throw r.error; },
+  async ampliar() { const r = await SB.rpc("liga_ampliar_estadio"); if (r.error) throw r.error; return r.data; },
   async renovar(id, anos) { const r = await SB.rpc("liga_renovar", { p_jogador: id, p_anos: anos }); if (r.error) throw r.error; },
   async criarTorneio(o) { const r = await SB.rpc("liga_criar_torneio", o); if (r.error) throw r.error; return r.data; },
   async inscrever(id) { const r = await SB.rpc("liga_inscrever_torneio", { p_id: id }); if (r.error) throw r.error; },
@@ -2225,7 +2230,7 @@ const faltaTxt = d => { const ms = d - new Date(), h = Math.floor(ms / 3600000),
 function linhaJogoOn(j, eu) {
   const meu = j.casa === eu.clube || j.fora === eu.clube, b = t => meu ? `<b>${t}</b>` : t;
   if (aoVivo(j)) return `<div>${b(`🔴 ${esc(nomeOn(j.casa))} × ${esc(nomeOn(j.fora))}`)} <span class="dica">ao vivo</span> <button data-replay="${j.id}" style="padding:1px 7px;font-size:12px">📺 Assistir</button></div>`;
-  if (encerrado(j)) return `<div>${b(`${esc(nomeOn(j.casa))} ${j.gc} × ${j.gf} ${esc(nomeOn(j.fora))}`)} <button data-replay="${j.id}" title="Replay" style="padding:1px 7px;font-size:12px">📺</button></div>`;
+  if (encerrado(j)) return `<div>${b(`${esc(nomeOn(j.casa))} ${j.gc} × ${j.gf} ${esc(nomeOn(j.fora))}`)}${j.publico != null ? ` <span class="dica">· ${Number(j.publico).toLocaleString("pt-BR")} torcedores</span>` : ""} <button data-replay="${j.id}" title="Replay" style="padding:1px 7px;font-size:12px">📺</button></div>`;
   return `<div>${b(`${esc(nomeOn(j.casa))} × ${esc(nomeOn(j.fora))}`)} <span class="dica">${HORA_TURNO[j.turno || 1]}</span></div>`;
 }
 function jogosOnHtml(lista, eu) {
@@ -2275,7 +2280,7 @@ function desenharOnline() {
     (anterior.length ? `<h3>Rodada ${est.rodada - 1}</h3>${jogosOnHtml(anterior, eu)}` : "") + (!atual.some(j => j.jogado) && anterior.length ? `<h3>Rodada ${est.rodada} (próxima)</h3>${jogosOnHtml(atual, eu)}` : "");
   const humanos = new Map(ON.tecnicos.filter(t => t.clube).map(t => [t.clube, t.nome]));
   $("on-tecs").innerHTML = ON.tecnicos.slice().sort((a, b) => a.nivel - b.nivel || (b.titulos?.length || 0) - (a.titulos?.length || 0)).map(t => `<div>👔 <b>${esc(t.nome)}</b> ${esc((t.nac || "").split(" ")[0])} · ${t.demitido ? "sem clube" : esc(nomeOn(t.clube))} · nível ${NUM_DIV[DIVS[t.nivel]]}${t.titulos?.length ? " · 🏆 " + t.titulos.length : ""}</div>`).join("");
-  desenharAmistosos(); desenharTorneios(); desenharElencoOn(); desenharLeilao();
+  desenharAmistosos(); desenharTorneios(); desenharElencoOn(); desenharLeilao(); desenharEstadioOn();
   ON.aba ||= div;
   $("on-abas").innerHTML = DIVS.map(d => `<button data-on-tab="${d}" class="${d === ON.aba ? "on" : ""}">${NOME_DIV[d]}</button>`).join("");
   const ord = ordemOn(ON.aba), iD = DIVS.indexOf(ON.aba), n = ord.length;
@@ -2302,6 +2307,26 @@ async function carregarElencos(ids) {
   ON.elencos ||= {}; const l = await ONAPI.elencos(falta).catch(() => []);
   for (const id of falta) ON.elencos[id] = l.filter(j => j.clube === id);
 }
+/* ---------- estádio e torcida (online) ---------- */
+function desenharEstadioOn() {
+  const eu = ON.eu, c = ON.clubes[eu.clube];
+  $("est-on-box").hidden = !!eu.demitido || !c; if ($("est-on-box").hidden) return;
+  if (c.capacidade == null) { $("est-on-info").innerHTML = "<p class='dica'>O servidor ainda não tem estádios: rode o liga.sql atualizado no Supabase.</p>"; $("est-on-ampliar").hidden = true; return; }
+  const pb = { A: 60, B: 40, C: 25, D: 15 }[c.div], cor = c.torcida > 60 ? "var(--verde)" : c.torcida > 35 ? "var(--amar)" : "var(--verm)";
+  const ult = ON.jogos.filter(j => j.casa === eu.clube && j.publico != null && encerrado(j)).sort((a, b) => b.rodada - a.rodada)[0], custo = 10 + 6 * (c.ampliacoes || 0);
+  $("est-on-info").innerHTML = `<p>Capacidade <b>${Number(c.capacidade).toLocaleString("pt-BR")}</b> lugares${c.obra_ate ? ` · 🚧 obra de +5.000 pronta na rodada ${c.obra_ate}` : ""}</p>
+    <p>Confiança da torcida <span class="conf"><i style="width:${c.torcida}%;background:${cor}"></i></span> <b>${c.torcida}%</b></p>
+    <p>${ult ? `Último jogo em casa: <b>${Number(ult.publico).toLocaleString("pt-BR")}</b> torcedores (${Math.round(ult.publico / c.capacidade * 100)}%) · renda <b>${dinheiro(Number(ult.renda))}</b>` : "<span class='dica'>Ainda sem jogo em casa nesta tela.</span>"}</p>
+    <p class="dica">Preço normal na Série ${c.div}: R$ ${pb}. Barato enche o estádio; caro rende mais por torcedor, mas afasta o público e, muito caro, irrita a torcida. Vitórias aumentam a confiança da torcida, derrotas derrubam. A renda entra no caixa do clube em cada jogo em casa da liga.</p>`;
+  if (document.activeElement !== $("est-on-preco")) $("est-on-preco").value = c.preco;
+  $("est-on-ampliar").hidden = false;
+  $("est-on-ampliar").textContent = c.obra_ate ? "🚧 Obra em andamento" : c.capacidade >= 100000 ? "Estádio no tamanho máximo" : `🏗 Ampliar +5.000 lugares (🪙 ${custo} tokens)`;
+  $("est-on-ampliar").disabled = !!c.obra_ate || c.capacidade >= 100000 || (eu.tokens || 0) < custo;
+}
+$("est-on-salvar").onclick = async () => { const v = Math.round(Number(String($("est-on-preco").value).replace(",", ".")));
+  try { await ONAPI.preco(v); $("est-on-msg").textContent = "✅ Preço salvo."; await recarregarOnline(); } catch (e) { $("est-on-msg").textContent = "⚠ " + e.message; } };
+$("est-on-ampliar").onclick = async () => { if (!confirm("Ampliar o estádio em 5.000 lugares? Os tokens são gastos agora e a obra fica pronta em 3 rodadas.")) return;
+  try { await ONAPI.ampliar(); await recarregarOnline(); $("est-on-msg").textContent = "🏗 Obra iniciada!"; } catch (e) { $("est-on-msg").textContent = "⚠ " + e.message; } };
 /* ---------- elenco, contratos e leilão ---------- */
 function desenharElencoOn() {
   const eu = ON.eu, temp = ON.estado.temporada;
