@@ -770,6 +770,10 @@ function posicionar() {                                   // posição de cada b
       p.x = xDe(t, px) + entre(-1.2, 1.2); p.y = lim(yy * A + entre(-1.2, 1.2), 2, A - 2);
     }
   }
+  for (const [t, o] of [[J.casa, J.fora], [J.fora, J.casa]]) {   // como na vida real: quem ataca acompanha a linha do penúltimo defensor
+    const lim2 = Math.max(linhaImp(t, o), prog(t, J.bola.x));
+    for (const p of ativos(t)) if (p.papel !== "GOL" && p !== J.dono && prog(t, p.x) > lim2) p.x = xDe(t, lim2 - entre(0, .03) + (rnd() < .3 ? entre(0, .008) : 0));
+  }
   if (J.dono && !J.dono.fora) { J.dono.x = J.bola.x; J.dono.y = J.bola.y; }
   const ataca = sentido(J.posse);            // juiz acompanha o lance um pouco atrás e de lado
   J.juiz = { x: lim(J.bola.x - ataca * 9, 4, L - 4), y: lim(J.bola.y + (J.bola.y < A / 2 ? 9 : -9), 4, A - 4) };
@@ -786,23 +790,25 @@ const forcaNaFuncao = p => p.fPos?.[p.papel] ?? p.forca;   // na posição secun
 const forcaAtual = p => forcaNaFuncao(p) * adapt(p) * (0.72 + 0.28 * p.folego / 100);
 
 /* ===================== impedimento ===================== */
-// Linha = penúltimo defensor (o último costuma ser o goleiro). Recebedor à frente dela e da bola, no campo de ataque: impedido.
-// Quem tem VELOCIDADE sai na hora certa (menos impedimento); zagueiros com MARCAÇÃO e a LINHA ALTA pegam mais.
-// Com linha alta, quem sai na hora certa rompe a linha e fica cara a cara.
+// Regra do futebol (Lei 11): na hora do passe, o recebedor está impedido se estiver no campo de ataque, à frente da bola
+// e à frente do PENÚLTIMO adversário (o último costuma ser o goleiro). Na mesma linha = legal.
+// Bem à frente da linha (mais de ~1,5 m): bandeira SEMPRE. Lance milimétrico: depende do tempo da corrida
+// (VELOCIDADE ajuda a sair na hora certa) e da zaga (MARCAÇÃO e LINHA ALTA pegam mais).
+const IMP_CLARO = 1.5 / L;                                    // 1,5 m em fração do campo
 function linhaImp(t, o) {
   const ps = ativos(o).map(p => prog(t, p.x)).sort((a, b) => b - a);
-  return Math.max(ps[1] ?? .5, .5);
+  return Math.max(ps[1] ?? .5, .5);                           // nunca antes do meio-campo: no próprio campo não há impedimento
 }
 function impedimento(t, o, d, alvo, pb) {
   const pa = prog(t, alvo.x), linha = linhaImp(t, o);
-  if (pa <= .52 || pa <= pb) return null;
+  if (pa <= .5 || pa <= pb) return null;                     // no próprio campo ou atrás da bola: legal
   const alta = o.linha === "alta", zag = ativos(o).filter(p => SETOR[p.papel] === 1);
   const mar = zag.length ? zag.reduce((a, p) => a + hab(p, "mar"), 0) / zag.length : 0;
   const alem = pa - linha;                                   // quanto ele está à frente da linha (fração do campo)
-  if (alem < -.015) return null;
-  const chanceImp = lim(.028 + alem * 1.1 + (alta ? .05 : 0) + .03 * mar - .03 * hab(alvo, "vel") + (t.estilo === "of" ? .01 : 0), .01, .3);
+  if (alem < -.03) return null;
   const xLinha = xDe(t, linha), de = { ...J.bola };
   J.linhaImp = { x: xLinha, ate: performance.now() + 1600 * (MS_POR_SEG / 150) };
+  const chanceImp = alem <= 0 ? 0 : alem > IMP_CLARO ? 1 : lim(.7 + .12 * mar + (alta ? .1 : 0) - .3 * hab(alvo, "vel"), .3, .97);
   if (rnd() < chanceImp) {                                   // bandeira!
     t.st.imp = (t.st.imp || 0) + 1; nota(alvo, -.05); scout(alvo, "I");
     for (const p of zag) nota(p, .03);
@@ -811,7 +817,7 @@ function impedimento(t, o, d, alvo, pb) {
     return { marcado: true, lance: fazerLance(3 + dist(d, alvo) / 9, de, () => { trocaPosse(o, quem, pos); J.seg += 10; bolaParada("falta"); posicionar(); congelarPos(); },
       sorteia([`${d.nome} lança ${alvo.nome}, mas o bandeirinha levanta a bandeira: impedimento.`, `Impedimento de ${alvo.nome}! ${d.nome} lançou e a linha do ${o.curto} subiu na hora certa.`, `${alvo.nome} estava adiantado: impedimento marcado.`]), "", pos) };
   }
-  if (alta && alem > .01 && rnd() < .1 + .08 * hab(alvo, "vel")) {   // linha alta furada: sai sozinho na cara do gol
+  if (alta && alem > -.01 && rnd() < .1 + .08 * hab(alvo, "vel")) {   // linha alta furada: saiu na hora certa e fica sozinho na cara do gol
     t.st.passes++; t.st.passesCertos++; nota(d, .12); nota(alvo, .06); J.passeDe = d;
     for (const p of zag) nota(p, -.05);
     J.dono = alvo; J.bola = { x: xDe(t, entre(.84, .88)), y: lim(alvo.y + (A / 2 - alvo.y) * .5, A / 2 - 14, A / 2 + 14) };
@@ -931,6 +937,7 @@ function proximoLance() {
     const chance = lim(.3 + (fa - fd) / 250 + (.12 * hab(d, "cru")) - (tem(goleiro(o), "sai") ? .1 : 0), .12, .65);
     if (area.length && rnd() < chance) {
       const cab = pesoSorteio(area, p => (p.papel === "CA" ? 3 : 1) * ((1 + (2.5 - 1) * hab(p, "cab"))));
+      const impC = impedimento(t, o, d, cab, pb); if (impC?.marcado) return impC.lance;   // cruzamento também é passe: vale a regra
       J.bola = { x: xDe(t, entre(.87, .93)), y: A / 2 + entre(-7, 7) }; J.dono = cab; nota(d, .05); J.passeDe = d;
       return fazerLance(dur, de, () => chute(t, o, cab, "cabeca"), `${d.nome} cruza na área...`);
     } else {
