@@ -272,6 +272,8 @@
           <div class="caixa" style="margin-top:12px"><h2>Tática para a próxima rodada</h2>
             <div class="ft"><label>Formação</label><select id="on-form"></select></div>
             <div class="ft"><label>Estilo</label><select id="on-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo (marca mais, sofre mais)</option><option value="de">Retranca (sofre menos, marca menos)</option></select></div>
+            <div class="ft"><label>Marcação</label><select id="on-marcacao"><option value="leve">Leve (poucas faltas, desarma menos)</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado (desarma muito, mais cartões)</option></select></div>
+            <div class="ft"><label>Jogadas</label><select id="on-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></div>
             <p><button class="prim" id="on-tatica">💾 Salvar tática</button> <span class="dica" id="on-msg-tat"></span></p></div>
           <div class="caixa" style="margin-top:12px" id="el-on-box"><h2>👥 Elenco e contratos</h2>
             <p class="dica" id="el-on-info"></p><div style="overflow-x:auto"><table class="tab"><thead><tr><th>Pos</th><th>Jogador</th><th>Idade</th><th>Força</th><th>Salário/rodada</th><th>Contrato</th><th></th></tr></thead><tbody id="el-on-lista"></tbody></table></div></div>
@@ -326,6 +328,8 @@
         <label>Time</label><select id="sel-meu"></select>
         <label>Formação</label><select id="sel-form"></select>
         <label>Estilo</label><select id="sel-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo</option><option value="de">Defensivo (retranca)</option></select>
+        <label>Marcação</label><select id="sel-marcacao"><option value="leve">Leve</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado</option></select>
+        <label>Jogadas</label><select id="sel-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select>
       </div>
       <div class="caixa">
         <h2>Adversário</h2>
@@ -380,7 +384,7 @@
 <div id="tela-gol" aria-live="assertive"><div class="gol-caixa"><div class="gol-txt">GOOOL!</div><div class="gol-time" id="gol-time"></div><div class="gol-autor" id="gol-autor"></div></div></div>
 <div class="modal" id="m-esc"><div class="janela" style="width:min(1060px,100%)">
   <div class="linha-campo"><h2 style="margin:0" id="esc-tit">📋 Escalação</h2>
-    <span><label class="dica">Formação <select id="esc-form"></select></label> <label class="dica">Estilo <select id="esc-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo</option><option value="de">Retranca</option></select></label> <button id="esc-auto">✨ Escalar automático</button></span></div>
+    <span><label class="dica">Formação <select id="esc-form"></select></label> <label class="dica">Estilo <select id="esc-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo</option><option value="de">Retranca</option></select></label> <label class="dica">Marcação <select id="esc-marcacao"><option value="leve">Leve</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado</option></select></label> <label class="dica">Jogadas <select id="esc-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></label> <button id="esc-auto">✨ Escalar automático</button></span></div>
   <p class="dica" id="esc-ajuda">Arraste os botões no campo para mudar as posições. Arraste um jogador da lista para cima de um botão (ou um botão para cima de outro) para trocar.</p>
   <div class="esc-grade">
     <div><div class="prancheta" id="prancheta"></div>
@@ -452,7 +456,7 @@ function montarTime(base, formacao, estilo, lado) {
   const reservas = pool.filter(p => !usados.has(p.id));
   let n = 1; [...titulares, ...reservas].forEach(p => { p.num = n++; });
   const ent = (p, slot) => ({ ...p, papel: slot ? slot[0] : p.pos, bx: slot ? slot[1] : 0, by: slot ? slot[2] : 0, nota: 6.0, folego: 100, gols: 0, assist: 0, cartao: 0, fora: false, saiu: false, entrou: false, toques: 0, x: 0, y: 0, px: 0, py: 0 });
-  return { base, nome: base.nome, curto: base.curto, cor: base.cor, cor2: base.cor2, lado, formacao, estilo,
+  return { base, nome: base.nome, curto: base.curto, cor: base.cor, cor2: base.cor2, lado, formacao, estilo, marcacao: "normal", jogada: "misto",
     jog: titulares.map((p, i) => ent(p, slots[i])), banco: reservas.map(p => ent(p, null)), subs: 0, janelas: 0, gols: 0,
     st: { posse: 0, chutes: 0, alvo: 0, esc: 0, faltas: 0, amarelos: 0, vermelhos: 0, passes: 0, passesCertos: 0, desarmes: 0, defesas: 0 } };
 }
@@ -464,7 +468,8 @@ function iniciarPartida() {
   const form = $("sel-form").value, estilo = $("sel-estilo").value, emCasa = $("sel-mando").value === "casa";
   const advForm = sorteia(Object.keys(FORMACOES)), advEst = sorteia(["eq", "eq", "of", "de"]);
   const meu = ESC_TIME && ESC_TIME.base === meuBase ? ESC_TIME : montarTime(meuBase, form, estilo, emCasa ? "casa" : "fora"), adv = montarTime(advBase, advForm, advEst, emCasa ? "fora" : "casa");
-  meu.lado = emCasa ? "casa" : "fora"; ESC_TIME = null;
+  meu.lado = emCasa ? "casa" : "fora"; if (meu !== ESC_TIME) { meu.marcacao = $("sel-marcacao").value; meu.jogada = $("sel-jogada").value; } ESC_TIME = null;
+  adv.marcacao = sorteia(["leve", "normal", "normal", "pesado", "mpesado"]); adv.jogada = sorteia(["misto", "misto", "meio", "lados"]);
   J = { casa: emCasa ? meu : adv, fora: emCasa ? adv : meu, meu, adv, seg: 0, tempo: 1, fim: false, intervalo: false, pausado: false, vel: 1, aguardando: false,
         posse: null, dono: null, bola: { x: L / 2, y: A / 2 }, anim: null, aba: "meu", ult: null, passeDe: null, acrescimo: [Math.floor(entre(1, 4)), Math.floor(entre(2, 6))] };
   J.posse = J.casa; J.dono = meio(J.casa); ajustarUniformes();
@@ -524,6 +529,9 @@ function congelarPos() { for (const t of [J.casa, J.fora]) for (const p of ativo
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const perto = (t, alvo) => ativos(t).filter(p => p.papel !== "GOL").sort((a, b) => dist(a, alvo) - dist(b, alvo))[0];
 const adapt = p => { const k = (PARECE[p.papel] || []).indexOf(p.pos); return k < 0 ? 0.8 : 1 - k * 0.05; };   // fora de posição rende menos
+const MARC = { leve: { tackle: .06, falta: .2, cartao: .12, verm: .008, lane: 8, folego: -.08 }, normal: { tackle: 0, falta: .34, cartao: .22, verm: .015, lane: 9, folego: 0 },
+  pesado: { tackle: -.06, falta: .4, cartao: .28, verm: .015, lane: 10, folego: .1 }, mpesado: { tackle: -.11, falta: .46, cartao: .34, verm: .022, lane: 11, folego: .18 } };
+const marc = t => MARC[t?.marcacao] || MARC.normal;
 const forcaAtual = p => p.forca * adapt(p) * (0.72 + 0.28 * p.folego / 100);
 
 /* ===================== motor: um lance por vez ===================== */
@@ -556,13 +564,16 @@ function proximoLance() {
   const podeChutar = pb > .7 && centro < 22, cruzar = pb > .62 && centro > 17;
   const r = rnd();
   let acao = "passe";
-  if (podeChutar && r < (pb > .85 ? .12 : .05) * of) acao = "chute";
-  else if (cruzar && r < .2) acao = "cruz";
+  if (podeChutar && r < (pb > .85 ? .12 : .05) * of * (t.jogada === "meio" ? 1.2 : t.jogada === "lados" ? .85 : 1)) acao = "chute";
+  else if (cruzar && r < (t.jogada === "lados" ? .34 : t.jogada === "meio" ? .1 : .2)) acao = "cruz";
   else if (r < .2 + (d.papel === "PE" || d.papel === "PD" ? .12 : 0)) acao = "drible";
 
   if (acao === "passe") {
     const cand = ativos(t).filter(p => p !== d && (p.papel !== "GOL" || pb < .25));
-    const alvo = pesoSorteio(cand, p => { const av = prog(t, p.x) - pb, dd = dist(p, d); return Math.max(.05, (av > 0 ? 1 + av * 4 * of : .6 + av * 2) * (dd < 35 ? 1 : .35)); });
+    const aberto = p => Math.abs(p.y - A / 2) > 19, jg = t.jogada;
+    const alvo = pesoSorteio(cand, p => { const av = prog(t, p.x) - pb, dd = dist(p, d);
+      const lado = jg === "lados" ? (aberto(p) ? 1.9 : .6) : jg === "meio" ? (aberto(p) ? .55 : 1.6) : 1;
+      return Math.max(.05, (av > 0 ? 1 + av * 4 * of : .6 + av * 2) * (dd < 35 ? 1 : .35) * lado); });
     const avanco = prog(t, alvo.x) - pb, dd = dist(alvo, d);
     const chance = lim(.86 + (fa - fd) / 220 - Math.max(0, avanco) * .5 - dd / 260, .45, .97);
     t.st.passes++;
@@ -576,7 +587,7 @@ function proximoLance() {
       // só perde a bola se houver um adversário no caminho do passe; senão a bola sai de campo
       nota(d, -.08);
       const lane = ativos(o).filter(p => p.papel !== "GOL").map(p => ({ p, ...noCorredor(p, d, alvo) })).sort((a, b) => a.d - b.d)[0];
-      if (lane && lane.d < 9) {
+      if (lane && lane.d < marc(o).lane) {
         const rec = lane.p; nota(rec, .1); o.st.inter = (o.st.inter || 0) + 1;
         trocaPosse(o, rec, lane.pt);
         texto = sorteia([`${rec.nome} intercepta o passe de ${d.nome}.`, `${rec.nome} entra na frente e rouba o passe de ${d.nome}.`, `${rec.nome} lê a jogada e corta.`]);
@@ -593,12 +604,12 @@ function proximoLance() {
     if (rnd() < .25) texto = sorteia([`${d.nome} avança com a bola.`, `${d.nome} conduz pelo ${centro > 18 ? "lado" : "meio"}.`, `${d.nome} ganha espaço.`]);
   } else if (acao === "drible") {
     dur = 6;
-    const chance = lim(.5 + (fa - fd) / 120, .2, .82);
+    const chance = lim(.5 + (fa - fd) / 120 + marc(o).tackle, .2, .85);
     if (rnd() < chance) {
       nota(d, .1); nota(defensor, -.05);
       const nx = lim(J.bola.x + (t.lado === "casa" ? 1 : -1) * entre(7, 15), 3, L - 3), ny = lim(J.bola.y + entre(-8, 8), 3, A - 3);
       J.bola = { x: nx, y: ny }; texto = rnd() < .5 ? `${d.nome} passa por ${defensor?.nome || "um marcador"}!` : "";
-    } else if (rnd() < .34) {
+    } else if (rnd() < marc(o).falta) {
       return falta(t, o, d, defensor);
     } else {
       nota(d, -.06); nota(defensor, .12); o.st.desarmes++;
@@ -628,7 +639,7 @@ function falta(t, o, vit, fal) {
   let pb = prog(t, J.bola.x), centro = Math.abs(J.bola.y - A / 2), naArea = pb > (L - 16.5) / L && centro < 20;
   if (naArea && rnd() > .22) { naArea = false; J.bola = { x: xDe(t, entre(.78, .82)), y: J.bola.y }; pb = prog(t, J.bola.x); }   // quase sempre o contato é na entrada da área
   narrar("", minutoTxt() + (naArea ? `${fal.nome} derruba ${vit.nome} dentro da área!` : `Falta de ${fal.nome} em ${vit.nome}.`));
-  if (rnd() < (naArea ? .5 : .22)) cartao(o, fal);
+  if (rnd() < (naArea ? .5 : marc(o).cartao)) cartao(o, fal);
   if (naArea) return penalti(t, o);
   const cob = cobrador(t), de = { ...J.bola };
   J.posse = t; J.dono = cob; J.passeDe = null;
@@ -712,7 +723,7 @@ function escanteio(t, o) {
 function cartao(t, p) {
   if (!p) return;
   if (p.cartao === 1 && rnd() > .2) return;              // já amarelado: o juiz costuma aliviar
-  if (p.cartao === 1 || rnd() < .015) { const segundo = p.cartao === 1; p.cartao = 2; p.fora = true; t.st.vermelhos++; nota(p, -1.5); narrar("verm", `${minutoTxt()}🟥 Cartão vermelho para ${p.nome} (${t.curto})! O ${t.nome} fica com ${ativos(t).length}.`); if (J.dono === p) { J.dono = perto(t, J.bola) || goleiro(t); } cenaCartao(t, p, true, segundo); }
+  if (p.cartao === 1 || rnd() < marc(t).verm) { const segundo = p.cartao === 1; p.cartao = 2; p.fora = true; t.st.vermelhos++; nota(p, -1.5); narrar("verm", `${minutoTxt()}🟥 Cartão vermelho para ${p.nome} (${t.curto})! O ${t.nome} fica com ${ativos(t).length}.`); if (J.dono === p) { J.dono = perto(t, J.bola) || goleiro(t); } cenaCartao(t, p, true, segundo); }
   else { p.cartao = 1; t.st.amarelos++; nota(p, -.3); narrar("cartao", `${minutoTxt()}🟨 Amarelo para ${p.nome} (${t.curto}).`); cenaCartao(t, p, false); }
 }
 function trocaPosse(t, p, pos) { J.posse = t; J.dono = p || perto(t, pos) || goleiro(t); J.bola = { x: pos.x, y: pos.y }; J.passeDe = null; }
@@ -724,7 +735,7 @@ function fazerLance(dur, de, depois, texto = "", cls = "", bolaFim) {
   J.anim = { t0: performance.now(), dur, de: { ...de }, para: bolaFim ? { ...bolaFim } : { ...J.bola }, depois };
   // relógio, fôlego e posse avançam pelo tempo do lance
   J.posse.st.posse += dur;
-  for (const t of [J.casa, J.fora]) for (const p of ativos(t)) p.folego = lim(p.folego - dur / 60 * (0.55 + (p.idade > 31 ? .25 : 0) + (p.papel === "GOL" ? -.4 : 0) + (t.estilo === "of" ? .1 : 0)), 0, 100);
+  for (const t of [J.casa, J.fora]) for (const p of ativos(t)) p.folego = lim(p.folego - dur / 60 * (0.55 + (p.idade > 31 ? .25 : 0) + (p.papel === "GOL" ? -.4 : 0) + (t.estilo === "of" ? .1 : 0) + marc(t).folego), 0, 100);
   J.seg += dur;
 }
 function minuto() { const m = Math.floor(J.seg / 60); return J.tempo === 1 ? Math.min(m, 45 + J.acrescimo[0]) : Math.min(m, 90 + J.acrescimo[1]); }
@@ -976,7 +987,7 @@ function abrirEscalacao(modo) {
   } else { if (!J.pausado) alternarPausa(); }
   const t = timeEsc();
   $("esc-form").innerHTML = [...Object.keys(FORMACOES), ...(FORMACOES[t.formacao] ? [] : [t.formacao])].map(f => `<option>${f}</option>`).join("");
-  $("esc-form").value = t.formacao; $("esc-estilo").value = t.estilo;
+  $("esc-form").value = t.formacao; $("esc-estilo").value = t.estilo; $("esc-marcacao").value = t.marcacao || "normal"; $("esc-jogada").value = t.jogada || "misto";
   $("esc-tit").textContent = `📋 Escalação — ${t.nome}`;
   $("esc-ok").textContent = modo === "pre" ? "▶ Começar partida" : "✔ Voltar ao jogo";
   $("esc-cancelar").hidden = modo !== "pre";
@@ -1056,10 +1067,12 @@ addEventListener("pointermove", moverArrasto);
 addEventListener("pointerup", soltarArrasto);
 addEventListener("pointercancel", () => { if (arr) { arr.fantasma?.remove(); arr = null; } });
 $("esc-form").onchange = () => { const f = $("esc-form").value; if (!FORMACOES[f]) return; aplicarFormacao(timeEsc(), f); desenharEscalacao(); if (J && ESC_MODO === "jogo") narrar("", `${minutoTxt()}📋 ${J.meu.curto} muda para o ${f}.`); };
+$("esc-marcacao").onchange = () => { timeEsc().marcacao = $("esc-marcacao").value; if (J && ESC_MODO === "jogo") narrar("", `${minutoTxt()}📋 ${J.meu.curto} muda a marcação: ${$("esc-marcacao").selectedOptions[0].text.toLowerCase()}.`); };
+$("esc-jogada").onchange = () => { timeEsc().jogada = $("esc-jogada").value; if (J && ESC_MODO === "jogo") narrar("", `${minutoTxt()}📋 ${J.meu.curto} passa a atacar ${$("esc-jogada").selectedOptions[0].text.toLowerCase()}.`); };
 $("esc-estilo").onchange = () => { timeEsc().estilo = $("esc-estilo").value; if (J && ESC_MODO === "jogo") narrar("", `${minutoTxt()}📋 ${J.meu.curto} passa a jogar ${$("esc-estilo").selectedOptions[0].text.toLowerCase()}.`); };
 $("esc-auto").onclick = () => {
   const t = timeEsc(), f = FORMACOES[$("esc-form").value] ? $("esc-form").value : "4-3-3";
-  if (ESC_MODO === "pre") { ESC_TIME = montarTime(t.base, f, t.estilo, "casa"); }
+  if (ESC_MODO === "pre") { const m = t.marcacao, jg = t.jogada; ESC_TIME = montarTime(t.base, f, t.estilo, "casa"); ESC_TIME.marcacao = m; ESC_TIME.jogada = jg; }
   else aplicarFormacao(t, f);
   desenharEscalacao();
 };
@@ -1417,12 +1430,12 @@ function forcaEscalada(id) {                              // força do time com 
   return xi.reduce((a, [s, j]) => a + j[2] - ((PARECE[s.papel] || []).indexOf(j[1]) === 0 ? 0 : (PARECE[s.papel] || []).includes(j[1]) ? 3 : 9), 0) / 11;
 }
 function fimDoJogoCarreira(fim) { decidirMeuJogo([fim.casa.gols, fim.fora.gols]); }
-function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
+function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, marcacao: t.marcacao, jogada: t.jogada, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
 function aplicarTatica(t, tat) {                         // repete a escalação da última partida (quem ainda estiver no elenco)
   const todos = [...t.jog, ...t.banco], novo = [];
   for (const s of tat.jog) { const p = todos.find(x => s.nome ? x.nome === s.nome : x.id === s.id); if (p && !novo.includes(p)) { Object.assign(p, { papel: s.papel, bx: s.bx, by: s.by }); novo.push(p); } }
   if (novo.length !== 11) return;
-  t.jog = novo; t.banco = todos.filter(p => !novo.includes(p)); t.formacao = tat.formacao; t.estilo = tat.estilo;
+  t.jog = novo; t.banco = todos.filter(p => !novo.includes(p)); t.formacao = tat.formacao; t.estilo = tat.estilo; t.marcacao = tat.marcacao || "normal"; t.jogada = tat.jogada || "misto";
 }
 $("c-salvar").onclick = () => { salvar(); $("c-salvar").textContent = "✅ Salvo"; setTimeout(() => $("c-salvar").textContent = "💾 Salvar", 1500); };
 
@@ -1929,7 +1942,10 @@ const ONAPI = {
     return { clubes: ok(clubes), estado: est, tecnicos: ok(tecnicos), classif: ok(classif), jogos };
   },
   async minhaTatica(uid) { const r = await SB.from("liga_taticas").select("*").eq("user_id", uid).maybeSingle(); return r.data; },
-  async salvarTatica(uid, formacao, estilo) { const r = await SB.from("liga_taticas").upsert({ user_id: uid, formacao, estilo, atualizado: new Date().toISOString() }); if (r.error) throw r.error; },
+  async salvarTatica(uid, tt) {
+    let r = await SB.from("liga_taticas").upsert({ user_id: uid, ...tt, atualizado: new Date().toISOString() });
+    if (r.error && /marcacao|jogada/.test(r.error.message)) r = await SB.from("liga_taticas").upsert({ user_id: uid, formacao: tt.formacao, estilo: tt.estilo, atualizado: new Date().toISOString() });   // servidor ainda sem as colunas novas
+    if (r.error) throw r.error; },
   async assumir(nome, nac) { const r = await SB.rpc("liga_entrar", { p_nome: nome, p_nac: nac }); if (r.error) throw r.error; return r.data; },
   async aceitar(clube) { const r = await SB.rpc("liga_aceitar", { p_clube: clube }); if (r.error) throw r.error; return r.data; },
   async amistosos(uid) { const r = await SB.from("liga_amistosos").select("*").or(`desafiante.eq.${uid},desafiado.eq.${uid}`).order("quando", { ascending: false }).limit(40); return r.error ? [] : r.data; },
@@ -2033,7 +2049,7 @@ function desenharOnline() {
   } else { $("on-prox-tit").textContent = "Próximo jogo"; $("on-prox").innerHTML = "<p class='dica'>Sem jogo nesta rodada.</p>"; }
   atualizarRelogioOn();
   $("on-form").innerHTML = Object.keys(FORMACOES).map(f => `<option>${f}</option>`).join("");
-  $("on-form").value = ON.tatica?.formacao || "4-3-3"; $("on-estilo").value = ON.tatica?.estilo || "eq";
+  $("on-form").value = ON.tatica?.formacao || "4-3-3"; $("on-estilo").value = ON.tatica?.estilo || "eq"; $("on-marcacao").value = ON.tatica?.marcacao || "normal"; $("on-jogada").value = ON.tatica?.jogada || "misto";
   const daRodada = r => ON.jogos.filter(j => j.rodada === r && j.div === div);
   const atual = daRodada(est.rodada), anterior = daRodada(est.rodada - 1);
   $("on-res").innerHTML = (atual.some(j => j.jogado) || !anterior.length ? `<h3>Rodada ${est.rodada}</h3>${jogosOnHtml(atual, eu)}` : "") +
@@ -2052,7 +2068,7 @@ $("on-criar").onclick = async () => { $("on-msg-login").textContent = "Criando a
   if (r.session) { ON.user = r.user; $("on-msg-login").textContent = ""; await recarregarOnline(); } else $("on-msg-login").textContent = "✅ Conta criada! Abra o e-mail de confirmação e depois toque em Entrar."; } catch (e) { $("on-msg-login").textContent = "⚠ " + erroAmigavel(e); } };
 $("on-assumir").onclick = async () => { const nome = $("on-nome").value.trim(); if (!nome) return ($("on-msg-novo").textContent = "Escreva o seu nome de técnico.");
   $("on-msg-novo").textContent = "Sorteando…"; try { await ONAPI.assumir(nome, $("on-nac").value); await recarregarOnline(); } catch (e) { $("on-msg-novo").textContent = "⚠ " + e.message; } };
-$("on-tatica").onclick = async () => { try { await ONAPI.salvarTatica(ON.user.id, $("on-form").value, $("on-estilo").value); ON.tatica = { formacao: $("on-form").value, estilo: $("on-estilo").value }; $("on-msg-tat").textContent = "✅ Salva para a próxima rodada."; } catch (e) { $("on-msg-tat").textContent = "⚠ " + e.message; } };
+$("on-tatica").onclick = async () => { try { const tt = { formacao: $("on-form").value, estilo: $("on-estilo").value, marcacao: $("on-marcacao").value, jogada: $("on-jogada").value }; await ONAPI.salvarTatica(ON.user.id, tt); ON.tatica = tt; $("on-msg-tat").textContent = "✅ Salva para a próxima rodada."; } catch (e) { $("on-msg-tat").textContent = "⚠ " + e.message; } };
 $("on-prox").onclick = async e => { const b = e.target.closest("[data-on-prop]"); if (!b) return; try { await ONAPI.aceitar(b.dataset.onProp); await recarregarOnline(); } catch (er) { alert(er.message); } };
 $("on-abas").onclick = e => { const b = e.target.closest("[data-on-tab]"); if (b) { ON.aba = b.dataset.onTab; desenharOnline(); } };
 $("on-atualizar").onclick = () => recarregarOnline().catch(e => onStatus("⚠ " + e.message));
@@ -2195,7 +2211,7 @@ $("am-jogar").onclick = async () => {
   await carregarElencos([eu.clube, $("am-adv").value]);
   const meu = garantirTimeOn(ON.clubes[eu.clube]), adv = garantirTimeOn(ON.clubes[$("am-adv").value]);
   popular(); $("sel-meu").value = meu.id; $("sel-adv").value = adv.id; $("sel-mando").value = $("am-mando").value;
-  if (ON.tatica?.formacao && FORMACOES[ON.tatica.formacao]) $("sel-form").value = ON.tatica.formacao; $("sel-estilo").value = ON.tatica?.estilo || "eq";
+  if (ON.tatica?.formacao && FORMACOES[ON.tatica.formacao]) $("sel-form").value = ON.tatica.formacao; $("sel-estilo").value = ON.tatica?.estilo || "eq"; $("sel-marcacao").value = ON.tatica?.marcacao || "normal"; $("sel-jogada").value = ON.tatica?.jogada || "misto";
   ESC_TIME = null; MODO_CARREIRA = null; AMISTOSO_ON = true; abrirEscalacao("pre");
 };
 $("am-desafiar").onclick = async () => {
@@ -2234,6 +2250,7 @@ async function assistirReplay(jogoId, obj) {
   const casa = montarTime(casaB, meuId === j.casa && estMeu?.formacao && FORMACOES[estMeu.formacao] ? estMeu.formacao : "4-3-3", meuId === j.casa ? (estMeu?.estilo || "eq") : "eq", "casa");
   const fora = montarTime(foraB, meuId === j.fora && estMeu?.formacao && FORMACOES[estMeu.formacao] ? estMeu.formacao : "4-4-2", meuId === j.fora ? (estMeu?.estilo || "eq") : "eq", "fora");
   const meu = euCasa ? casa : fora, adv = euCasa ? fora : casa;
+  if (estMeu) { const t = meuId === j.casa ? casa : fora; t.marcacao = estMeu.marcacao || "normal"; t.jogada = estMeu.jogada || "misto"; }
   J = { casa, fora, meu, adv, seg: 0, tempo: 1, fim: false, intervalo: false, pausado: false, vel: 2, aguardando: false, replay: j,
         roteiro: minutos.map((m, i) => ({ min: m, lado: lados[i], feito: false })),
         posse: casa, dono: null, bola: { x: L / 2, y: A / 2 }, anim: null, aba: "meu", passeDe: null, acrescimo: [1 + Math.floor(rnd() * 2), 2 + Math.floor(rnd() * 3)] };

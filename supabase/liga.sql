@@ -35,6 +35,14 @@ create table if not exists public.liga_taticas (
   formacao text not null default '4-3-3', estilo text not null default 'eq' check (estilo in ('eq','of','de')),
   atualizado timestamptz not null default now()
 );
+-- marcação (leve/normal/pesado/muito pesado) e lado das jogadas (meio/laterais/misto)
+alter table public.liga_taticas add column if not exists marcacao text not null default 'normal', add column if not exists jogada text not null default 'misto';
+do $$ begin alter table public.liga_taticas add constraint liga_taticas_marc check (marcacao in ('leve','normal','pesado','mpesado') and jogada in ('misto','meio','lados')); exception when others then null; end $$;
+-- marcação mais pesada tira um pouco dos gols do rival (e dá mais cartões no jogo animado); leve dá um pouco mais
+create or replace function public.liga_fator_marcacao(p_clube text) returns numeric language sql stable as $$
+  select coalesce((select case x.marcacao when 'leve' then 1.04 when 'pesado' then 0.96 when 'mpesado' then 0.92 else 1 end
+    from public.liga_tecnicos t join public.liga_taticas x using (user_id) where t.clube = p_clube), 1)
+$$;
 
 -- ---------- clubes (Séries A, B e C reais de 2026; Série D com clubes fictícios) ----------
 insert into public.liga_clubes (id, nome, sigla, cor, cor2, forca, div) values
@@ -249,6 +257,7 @@ begin
     lc := 1.3 * exp(((fc + 2.5) - ff) / 22); lf := 1.3 * exp((ff - (fc + 2.5)) / 22);
     if ec = 'of' then lc := lc * 1.15; lf := lf * 1.12; elsif ec = 'de' then lc := lc * 0.85; lf := lf * 0.82; end if;
     if ef = 'of' then lf := lf * 1.15; lc := lc * 1.12; elsif ef = 'de' then lf := lf * 0.85; lc := lc * 0.82; end if;
+    lc := lc * liga_fator_marcacao(j.fora); lf := lf * liga_fator_marcacao(j.casa);
     v_gc := liga_poisson(lc); v_gf := liga_poisson(lf);
     update liga_jogos set gc = v_gc, gf = v_gf, jogado = true, inicio = now(), fim = now() + interval '16 minutes' where id = j.id;
   end loop;
@@ -325,7 +334,7 @@ grant select on public.liga_clubes, public.liga_estado, public.liga_jogos, publi
 grant select, insert, update on public.liga_taticas to authenticated;
 revoke all on function public.liga_rodar_turno(int), public.liga_definir_turnos(int), public.liga_rodar_rodada(), public.liga_fim_temporada(), public.liga_gerar_calendario(int), public.liga_gerar_propostas(uuid) from public, anon, authenticated;
 grant execute on function public.liga_entrar(text, text), public.liga_aceitar(text) to authenticated;
-grant execute on function public.liga_posicao(text), public.liga_poisson(numeric) to anon, authenticated;
+grant execute on function public.liga_posicao(text), public.liga_poisson(numeric), public.liga_fator_marcacao(text) to anon, authenticated;
 
 -- ---------- primeiro calendário e relógio das rodadas ----------
 do $$ begin
@@ -395,6 +404,7 @@ begin
     lc := 1.3 * exp(((fc + 2.5) - ff) / 22); lf := 1.3 * exp((ff - (fc + 2.5)) / 22);
     if ec = 'of' then lc := lc * 1.15; lf := lf * 1.12; elsif ec = 'de' then lc := lc * 0.85; lf := lf * 0.82; end if;
     if ef = 'of' then lf := lf * 1.15; lc := lc * 1.12; elsif ef = 'de' then lf := lf * 0.85; lc := lc * 0.82; end if;
+    lc := lc * liga_fator_marcacao(a.fora); lf := lf * liga_fator_marcacao(a.casa);
     update liga_amistosos set gc = liga_poisson(lc), gf = liga_poisson(lf), status = 'jogado', inicio = a.quando, fim = a.quando + interval '16 minutes' where id = a.id;
     n := n + 1;
   end loop;
@@ -549,6 +559,7 @@ begin
     lc := 1.3 * exp(((fc + 1) - ff) / 22); lf := 1.3 * exp((ff - (fc + 1)) / 22);
     if ec = 'of' then lc := lc * 1.15; lf := lf * 1.12; elsif ec = 'de' then lc := lc * 0.85; lf := lf * 0.82; end if;
     if ef = 'of' then lf := lf * 1.15; lc := lc * 1.12; elsif ef = 'de' then lf := lf * 0.85; lc := lc * 0.82; end if;
+    lc := lc * liga_fator_marcacao(g.fora); lf := lf * liga_fator_marcacao(g.casa);
     v_gc := liga_poisson(lc); v_gf := liga_poisson(lf); v_pc := null; v_pf := null;
     if g.formato = 'mata' and v_gc = v_gf then v_pc := 3 + floor(random() * 3); v_pf := case when random() < .5 then v_pc - 1 - floor(random() * 2) else v_pc + 1 end; end if;
     update liga_torneio_jogos set gc = v_gc, gf = v_gf, pc = v_pc, pf = v_pf, jogado = true, inicio = g.quando, fim = g.quando + interval '16 minutes' where id = g.id;
