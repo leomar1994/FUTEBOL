@@ -64,6 +64,32 @@
   .grupos-lib { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; } .grupos-lib h3 { margin: 6px 0 2px; }
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; z-index: 10; padding: 10px; }
   .modal.on { display: flex; }
+  .tb-jan { width: min(1060px, 100%); background: #0e3150; border-color: #1d4a72; padding: 0; }
+  .tb-topo { display: flex; align-items: center; gap: 10px; background: #1b1712; padding: 10px 14px; border-radius: 14px 14px 0 0; }
+  .tb-cat { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; } .tb-cat button { background: none; border: 0; color: #e8efe9; font-weight: 600; padding: 8px 12px; }
+  .tb-cat button.on { background: #2a241c; text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px; }
+  #tb-ano { color: #fff; font-size: 17px; min-width: 60px; text-align: center; } #tb-fechar { background: #e9eef3; color: #111; font-weight: 700; min-width: 44px; }
+  .tb-sel { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px 14px 0; } .tb-sel select { background: #e9eef3; color: #111; min-width: 220px; font-weight: 600; }
+  .tb-corpo { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; padding: 14px; align-items: start; }
+  .tb-t { width: 100%; border-collapse: collapse; background: #e6e6e6; color: #111; font-size: 13.5px; }
+  .tb-t th { background: #000; color: #fff; padding: 7px 6px; font-size: 12.5px; } .tb-t td { padding: 5px 6px; border-bottom: 1px solid #b9b9b9; text-align: center; }
+  .tb-t td:first-child { border-left: 5px solid transparent; font-weight: 700; } .tb-t .tb-cl { text-align: left; font-weight: 600; } .tb-t td:nth-child(3) { background: #d6d6d6; }
+  .tb-t tr.sobe td:first-child { border-left-color: #1f8f3a; } .tb-t tr.lib td:first-child { border-left-color: #1f6fd1; } .tb-t tr.cai td:first-child { border-left-color: #c62828; }
+  .tb-t tr.eu td { background: #fff3c4; font-weight: 700; }
+  .tb-grupos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; } .tb-gr { margin: 0 0 4px; color: #fff; font-size: 14px; }
+  .tb-leg { font-size: 12.5px; color: #cfe0ef; } .tb-leg .sobe { color: #3fcf65; } .tb-leg .lib { color: #5aa2ff; } .tb-leg .cai { color: #ff6b6b; }
+  .tb-mata { background: #e6e6e6; color: #111; border-radius: 4px; padding: 6px 12px; } .tb-mata h3 { margin: 10px 0 4px; font-size: 14px; } .tb-mata .res-l div { border-bottom-color: #bbb; }
+  .tb-card { background: #cfcfcf; color: #111; margin-bottom: 12px; font-size: 13px; }
+  .tb-ch { display: flex; gap: 8px; background: #000; color: #fff; font-weight: 700; padding: 8px 10px; } .tb-ch span:first-child { flex: 1; } .tb-ch span + span { width: 34px; text-align: center; }
+  .tb-li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #b5b5b5; align-items: center; } .tb-li b { width: 34px; text-align: center; }
+  #tb-modal .escudo { width: 18px; height: 21px; vertical-align: middle; margin: 0 7px 0 0; } #tb-modal .escudo svg, #tb-modal .escudo img { width: 100%; height: 100%; display: block; } .tb-jogo span:first-child .escudo { margin: 0 0 0 6px; }
+  .tb-kv { display: grid; grid-template-columns: 120px 1fr; gap: 8px; padding: 6px 10px; } .tb-kv span { font-weight: 600; } .tb-kv b div { margin-bottom: 4px; }
+  .tb-bts { display: flex; gap: 10px; } .tb-bts button { flex: 1; background: #d9d9d9; color: #111; font-weight: 700; border-radius: 0; } .tb-bts button.on { background: #0b2740; color: #fff; }
+  .tb-rod { padding-bottom: 6px; } .tb-nav { display: flex; justify-content: space-between; align-items: center; background: #000; color: #fff; padding: 4px; } .tb-nav button { background: #333; color: #fff; min-width: 44px; }
+  .tb-jogo { display: grid; grid-template-columns: 1fr 64px 1fr; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #b5b5b5; align-items: center; } .tb-jogo span:first-child { text-align: right; } .tb-jogo b { text-align: center; } .tb-jogo.eu { background: #fff3c4; font-weight: 700; }
+  .tb-rod .res-l, .tb-rod h3, .tb-rod p { padding: 0 10px; } .tb-rod .res-l div { border-bottom-color: #b5b5b5; }
+  #tb-principal .dica, .tb-card .dica { color: #555; } #tb-principal > .dica { color: #cfe0ef; }
+  @media (max-width: 760px) { .tb-corpo { grid-template-columns: 1fr; } .tb-sel select { min-width: 0; flex: 1; } .tb-t th:nth-child(8), .tb-t td:nth-child(8), .tb-t th:nth-child(9), .tb-t td:nth-child(9) { display: none; } }
   .modal .janela { background: var(--painel); border: 1px solid var(--borda); border-radius: 14px; padding: 10px; width: min(980px, 100%); max-height: 100%; overflow: auto; }
   #campo { width: 100%; height: auto; display: block; border-radius: 10px; background: #2f7a3b; }
   .linha-campo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
@@ -426,6 +452,11 @@
   </section>
 </div>
 
+<div class="modal" id="tb-modal"><div class="janela tb-jan">
+  <div class="tb-topo"><nav class="tb-cat" id="tb-cat"></nav><b id="tb-ano"></b><button id="tb-fechar" title="Fechar (Esc)">✕</button></div>
+  <div class="tb-sel"><select id="tb-comp" aria-label="Competição"></select><select id="tb-fase" aria-label="Fase"></select></div>
+  <div class="tb-corpo"><div id="tb-principal"></div><aside id="tb-lado"></aside></div>
+</div></div>
 <div class="modal" id="m-campo"><div class="janela" style="width:min(1400px, 100%)">
   <div class="linha-campo"><b id="campo-placar"></b><span><button id="pausa2">⏸</button> <button id="fechar-campo">✕ Fechar</button></span></div>
   <canvas id="campo" width="2100" height="1360"></canvas>
@@ -2275,6 +2306,9 @@ function resolverData(ev) {
     m.autores = [autoresGols(m.casa, gc), autoresGols(m.fora, gf)];
     const ck = m.d ? "L:" + m.d : m.comp, art = ((C.art ||= {})[ck] ||= {});
     m.autores.forEach((l, k) => { const cl = k ? m.fora : m.casa; for (const n of l) art[cl + "|" + n] = (art[cl + "|" + n] || 0) + 1; });
+    { const sc = ((C.sc ||= {})[ck] ||= { j: 0, g: 0, gol: null }); sc.j++; sc.g += gc + gf;        // para a janela de Tabelas
+      const dif = Math.abs(gc - gf), dm = sc.gol ? Math.abs(sc.gol[2] - sc.gol[3]) : -1; if (dif > dm || (dif === dm && dif > 0 && gc + gf > sc.gol[2] + sc.gol[3])) sc.gol = [m.casa, m.fora, gc, gf];
+      if (!m.ko) ((C.pl ||= {})[ck] ||= {})[m.casa + "|" + m.fora] = [gc, gf]; }
     for (const tec of humanosAtivos()) if (tec.clube === m.casa || tec.clube === m.fora) ((C.hist ||= {})[tec.clube] ||= {})[C.temporada + ":" + C.data] = [m.casa, m.fora, gc, gf, m.pen];
     if (!m.d) for (const tec of humanosAtivos()) if (tec.clube === m.casa || tec.clube === m.fora) { const txt = `${nomeTime(m.casa)} ${gc} × ${gf} ${nomeTime(m.fora)}${m.pen ? ` (pên. ${m.pen[0]}–${m.pen[1]})` : ""} — ${m.nome}`; tec.historico.unshift(txt); tec.historico = tec.historico.slice(0, 10); }
   }
@@ -2329,7 +2363,10 @@ function encerrarTemporada() {
   for (const c of Object.values(C.st || {})) for (const s of Object.values(c)) { s.tj = s.tg = s.ta = s.tn = s.tp = 0; }
   const ordens = Object.fromEntries(DIVS.map(d => [d, ordenar(C.ligas[d])])), cbCamp = C.comps?.cb?.campeao, temp = C.temporada;
   const lib = ordens.A.slice(0, 6); if (cbCamp && !lib.includes(cbCamp)) lib.push(cbCamp); else lib.push(ordens.A[6]);
-  C.resumoTemp = montarResumo(ordens); (C.resumos ||= []).unshift(C.resumoTemp); C.resumos = C.resumos.slice(0, 10); C.art = {};
+  C.resumoTemp = montarResumo(ordens);
+  { const soma = r => { for (const it of [...(r.nac || []), ...(r.int || []), ...(r.reg || [])]) { const c = (C.titComp[it.nome] ||= {}); c[it.campeao] = (c[it.campeao] || 0) + 1; } };
+    if (!C.titComp) { C.titComp = {}; for (const r of C.resumos || []) soma(r); } soma(C.resumoTemp); }
+  (C.resumos ||= []).unshift(C.resumoTemp); C.resumos = C.resumos.slice(0, 10); C.art = {}; C.sc = {}; C.pl = {};
   for (const d of DIVS) ordens[d].forEach((id, i) => premiar(id, Math.round(PREMIO_LIGA[d](i) * 100) / 100, `Premiação da ${NOME_DIV[d]} ${temp} (${i + 1}º lugar)`));
   fimDaTemporada();
   C.proxLib = lib;
@@ -2384,6 +2421,124 @@ function compTemClube(k, id) {
 }
 function idsDasComps2(m) { const s = new Set(m?.vivos || []); for (const f of m?.hist || []) for (const j of f.jogos) { s.add(j[0]); s.add(j[1]); } for (const j of m?.jogos || []) { s.add(j[0]); s.add(j[1]); } for (const l of Object.values(m?.entram || {})) l.forEach(x => s.add(x)); return s; }
 $("c-comp-sel").onchange = () => { COMP_SEL = $("c-comp-sel").value; desenharComp(); };
+/* ---------- janela de TABELAS (nacional · internacional · estadual · regional) ----------
+   Abre sempre na competição do seu clube; as de que você participa vêm primeiro (⭐), as outras ficam em "Outras". */
+const TB = { cat: null, comp: null, fase: null, lado: "est", rod: null };
+function tbListas() {
+  const K = C.comps || {}, L = { nac: [], int: [], est: [], reg: [] };
+  for (const d of DIVS) L.nac.push(["L:" + d, NOME_DIV[d]]);
+  if (K.cb) L.nac.push(["CB", "Copa do Brasil"]);
+  if (K.ami) L.nac.push(["AMI", K.ami.nome + " (amistoso)"]);
+  if (K.lib) L.int.push(["LIB", "Libertadores"]);
+  if (K.mun) L.int.push(["MUN", "Mundial de Clubes"]);
+  for (const e of Object.values(K.est || {}).sort((a, b) => a.nome.localeCompare(b.nome))) L.est.push(["EST:" + e.uf, e.nome]);
+  for (const [k, m] of Object.entries(K.reg || {})) L.reg.push(["REG:" + k, m.nome]);
+  return L;
+}
+const TB_CATS = [["nac", "Nacional"], ["int", "Internacional"], ["est", "Estadual"], ["reg", "Regional"]];
+function tbParticipa(k, id) { if (!id) return false; if (k.startsWith("L:")) return divDe(id) === k.slice(2); return !!compTemClube(k, id); }
+function tbObj(k) {                                       // dados da competição
+  const K = C.comps || {}, [t, s] = k.split(":");
+  if (t === "L") return { tabs: [{ ...C.ligas[s], nome: NOME_DIV[s] }], mata: null, nome: NOME_DIV[s] };
+  if (t === "EST") { const e = K.est[s]; return { tabs: [{ ...e, nome: "Primeira fase" }], mata: e.mata, nome: e.nome }; }
+  if (t === "LIB") return { tabs: K.lib.grupos, mata: K.lib.mata, nome: "Libertadores" };
+  if (t === "AMI") return { tabs: K.ami.grupos, mata: K.ami.mata, nome: K.ami.nome };
+  const m = t === "REG" ? K.reg[s] : t === "CB" ? K.cb : K.mun; return { tabs: [], mata: m, nome: m?.nome || "" };
+}
+function tbFases(k, o) {
+  const f = [];
+  if (o.tabs.length) f.push(["tab", k.startsWith("L:") ? "Pontos corridos" : k === "LIB" || (k === "AMI" && o.tabs.length > 1) ? "Fase de grupos" : "Primeira fase"]);
+  if (o.mata) f.push(["mata", k === "EST" || k.startsWith("EST:") ? "Semifinais e final" : "Mata-mata"]);
+  return f;
+}
+function abrirTabelas() {
+  if (!C) return;
+  const tec = T(), meu = tec && !tec.demitido ? tec.clube : null, L = tbListas();
+  if (!TB.comp || !Object.values(L).flat().some(x => x[0] === TB.comp)) { TB.comp = "L:" + (meu ? divDe(meu) || "A" : "A"); TB.cat = "nac"; TB.fase = null; TB.rod = null; }
+  $("tb-modal").classList.add("on"); desenharTabelas(); $("tb-modal").querySelector(".janela").scrollTop = 0;
+}
+function tbTitCampeoes(nome) {                            // títulos por clube (salvo a cada fim de temporada; saves antigos usam os resumos)
+  const cont = C.titComp ? { ...(C.titComp[tbNomeResumo(nome)] || C.titComp[nome] || {}) } : {};
+  if (!C.titComp) for (const r of C.resumos || []) for (const it of [...(r.nac || []), ...(r.int || []), ...(r.reg || [])]) if (it.nome === tbNomeResumo(nome) || it.nome === nome) cont[it.campeao] = (cont[it.campeao] || 0) + 1;
+  return Object.entries(cont).sort((a, b) => b[1] - a[1]);
+}
+const tbNomeResumo = n => ({ "Libertadores": "Copa Libertadores" })[n] || n;
+function tbUltimo(nome) { for (const r of C.resumos || []) for (const it of [...(r.nac || []), ...(r.int || []), ...(r.reg || [])]) if (it.nome === tbNomeResumo(nome) || it.nome === nome) return it.campeao; return null; }
+function tbTabela(obj, k, meu, comTitulo) {
+  const ord = ordenar(obj), n = ord.length, div = k.startsWith("L:") ? k.slice(2) : null, iD = div ? DIVS.indexOf(div) : -1;
+  const humanos = new Map(C.tecnicos.filter(x => !x.demitido).map(x => [x.clube, x.nome]));
+  const zona = i => div ? (div === "A" && i < 6 ? "lib" : iD > 0 && i < 4 ? "sobe" : iD < 3 && i >= n - 4 ? "cai" : "") : i < (k.startsWith("EST:") ? 4 : k === "LIB" ? 2 : k === "AMI" ? (C.comps.ami.formula === "2g4" ? 2 : 1) : 0) ? "sobe" : "";
+  return (comTitulo ? `<h3 class="tb-gr">${esc(obj.nome)}</h3>` : "") + `<table class="tb-t"><thead><tr><th></th><th class="tb-cl"></th><th>PG</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th></tr></thead><tbody>` +
+    ord.map((id, i) => { const x = obj.tab[id]; return `<tr class="${id === meu ? "eu" : ""} ${zona(i)}"><td>${i + 1}</td><td class="tb-cl">${escudo(timePorId(id))}${esc(nomeTime(id))}${humanos.has(id) && id !== meu ? ` <span class="dica">(${esc(humanos.get(id))})</span>` : ""}</td><td><b>${x.P}</b></td><td>${x.J}</td><td>${x.V}</td><td>${x.E}</td><td>${x.D}</td><td>${x.GP}</td><td>${x.GC}</td><td>${x.GP - x.GC}</td></tr>`; }).join("") + "</tbody></table>";
+}
+function tbLegenda(k) {
+  const it = [];
+  if (k === "L:A") it.push(["lib", "Libertadores"]); if (/^L:[BCD]$/.test(k)) it.push(["sobe", "Acesso"]); if (/^L:[ABC]$/.test(k)) it.push(["cai", "Rebaixamento"]);
+  if (k.startsWith("EST:")) it.push(["sobe", "Semifinais"]); if (k === "LIB" || k === "AMI") it.push(["sobe", "Classificados"]);
+  return it.length ? `<p class="tb-leg">${it.map(([c, t]) => `<span class="${c}">▌</span> ${t}`).join(" &nbsp; ")}</p>` : "";
+}
+function tbCartao(tit, cols, linhas) {
+  return `<div class="tb-card"><div class="tb-ch"><span>${tit}</span>${cols.map(c => `<span>${c}</span>`).join("")}</div>${linhas.length ? linhas.join("") : '<div class="tb-li dica">Ainda sem jogos.</div>'}</div>`;
+}
+function tbLado(k, o) {
+  if (TB.lado === "rod") return tbRodadas(k, o);
+  const art = Object.entries(C.art?.[k] || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  let h = tbCartao("Artilheiros", ["G"], art.map(([ch, g]) => { const [cl, ...nm] = ch.split("|"); return `<div class="tb-li"><span>${escudo(timePorId(cl))}${esc(nm.join("|"))} <span class="dica">(${esc(nomeTime(cl))})</span></span><b>${g}</b></div>`; }));
+  if (o.tabs.length) {
+    const todos = o.tabs.flatMap(t => Object.entries(t.tab)).filter(([, x]) => x.J);
+    const top = (f, inv) => todos.slice().sort((a, b) => inv ? f(a[1]) - f(b[1]) : f(b[1]) - f(a[1])).slice(0, 3).map(([id, x]) => `<div class="tb-li"><span>${escudo(timePorId(id))}${esc(nomeTime(id))}</span><b>${f(x)}</b></div>`);
+    h += tbCartao("Melhores ataques", ["GP"], top(x => x.GP)) + tbCartao("Melhores defesas", ["GC"], top(x => x.GC, true));
+  }
+  const sc = C.sc?.[k], camp = o.mata?.campeao, ult = camp || tbUltimo(o.nome), maiores = tbTitCampeoes(o.nome).slice(0, 3);
+  const gols = sc ? sc.g : o.tabs.reduce((a, t) => a + Object.values(t.tab).reduce((s, x) => s + x.GP, 0), 0), jogos = sc ? sc.j : o.tabs.reduce((a, t) => a + Object.values(t.tab).reduce((s, x) => s + x.J, 0) / 2, 0);
+  h += `<div class="tb-card"><div class="tb-ch"><span>Estatísticas e história</span></div>
+    <div class="tb-kv"><span>Média de gols</span><b>${jogos ? `${(gols / jogos).toFixed(1).replace(".", ",")} <span class="dica">(${gols} G / ${jogos} J)</span>` : "—"}</b></div>
+    <div class="tb-kv"><span>Maior goleada</span><b>${sc?.gol ? `${esc(nomeTime(sc.gol[0]))} ${sc.gol[2]} × ${sc.gol[3]} ${esc(nomeTime(sc.gol[1]))}` : "—"}</b></div>
+    <div class="tb-kv"><span>${camp ? "Campeão" : "Último campeão"}</span><b>${ult ? escudo(timePorId(ult)) + esc(nomeTime(ult)) : "—"}</b></div>
+    <div class="tb-kv"><span>Maior vencedor</span><b>${maiores.length ? maiores.map(([id, n]) => `<div>${escudo(timePorId(id))}${esc(nomeTime(id))} (${n})</div>`).join("") : "—"}</b></div></div>`;
+  return h;
+}
+function tbRodadas(k, o) {
+  if (!o.tabs.length) return `<div class="tb-card tb-rod">${mataHtml(o.mata, T().demitido ? null : T().clube) || '<p class="dica">O sorteio ainda não saiu.</p>'}</div>`;
+  const nR = Math.max(...o.tabs.map(t => t.cal.length)), feitas = Math.max(0, ...o.tabs.flatMap(t => Object.values(t.tab).map(x => x.J)));
+  if (TB.rod == null) TB.rod = Math.max(0, Math.min(nR - 1, feitas - 1));
+  const pl = C.pl?.[k] || {}, meu = T().demitido ? null : T().clube;
+  const jogos = o.tabs.flatMap(t => (t.cal[TB.rod] || []).map(j => [t, j]));
+  return `<div class="tb-card tb-rod"><div class="tb-nav"><button data-tb-rod="-1" ${TB.rod <= 0 ? "disabled" : ""}>◀</button><b>Rodada ${TB.rod + 1} de ${nR}</b><button data-tb-rod="1" ${TB.rod >= nR - 1 ? "disabled" : ""}>▶</button></div>` +
+    jogos.map(([t, [a, b]]) => { const r = pl[a + "|" + b], eu = a === meu || b === meu, jog = TB.rod < feitas;
+      return `<div class="tb-jogo ${eu ? "eu" : ""}"><span>${esc(nomeTime(a))} ${escudo(timePorId(a))}</span><b>${r ? `${r[0]} × ${r[1]}` : jog ? "–" : "×"}</b><span>${escudo(timePorId(b))} ${esc(nomeTime(b))}</span></div>`; }).join("") +
+    (TB.rod < feitas && !Object.keys(pl).length ? '<p class="dica">Placares guardados a partir desta versão do jogo.</p>' : "") + "</div>";
+}
+function desenharTabelas() {
+  const L = tbListas(), tec = T(), meu = tec && !tec.demitido ? tec.clube : null;
+  if (!L[TB.cat]?.some(x => x[0] === TB.comp)) TB.cat = Object.keys(L).find(c => L[c].some(x => x[0] === TB.comp)) || "nac";
+  $("tb-cat").innerHTML = TB_CATS.filter(([c]) => L[c].length).map(([c, n]) => `<button data-tb-cat="${c}" class="${c === TB.cat ? "on" : ""}">${n}${L[c].some(x => tbParticipa(x[0], meu)) ? " ⭐" : ""}</button>`).join("");
+  $("tb-ano").textContent = C.temporada || "";
+  const lista = L[TB.cat], minhas = lista.filter(x => tbParticipa(x[0], meu)), outras = lista.filter(x => !tbParticipa(x[0], meu));
+  const op = ([k, n]) => `<option value="${k}" ${k === TB.comp ? "selected" : ""}>${esc(n)}${tbParticipa(k, meu) ? " ⭐" : ""}</option>`;
+  $("tb-comp").innerHTML = minhas.length && outras.length ? `<optgroup label="Que você disputa">${minhas.map(op).join("")}</optgroup><optgroup label="Outras">${outras.map(op).join("")}</optgroup>` : lista.map(op).join("");
+  const k = TB.comp, o = tbObj(k), fases = tbFases(k, o);
+  if (!fases.some(f => f[0] === TB.fase)) TB.fase = fases.some(f => f[0] === "mata") ? "mata" : fases[0]?.[0] || "tab";
+  $("tb-fase").innerHTML = fases.map(([f, n]) => `<option value="${f}" ${f === TB.fase ? "selected" : ""}>${n}</option>`).join(""); $("tb-fase").hidden = fases.length < 2;
+  let h = "";
+  if (TB.fase === "tab" && o.tabs.length) h = o.tabs.length > 1 ? `<div class="tb-grupos">${o.tabs.map(t => tbTabela(t, k, meu, true)).join("")}</div>` : tbTabela(o.tabs[0], k, meu, false);
+  else h = `<div class="tb-mata">${mataHtml(o.mata, meu) || (o.mata ? "" : '<p class="dica">O mata-mata ainda não começou.</p>')}</div>`;
+  if (!o.mata && !o.tabs.length) h = '<p class="dica">Competição ainda não definida.</p>';
+  if (k.startsWith("REG:") && o.mata && !o.mata.hist.length) h += `<p class="dica">Participantes: ${o.mata.vivos.map(nomeTime).map(esc).join(", ")}</p>`;
+  if (k === "CB") h = `<p class="dica">Times da Série A entram na 4ª fase. Jogo único; empate vai para os pênaltis.</p>` + h;
+  $("tb-principal").innerHTML = h + (TB.fase === "tab" ? tbLegenda(k) : "");
+  $("tb-lado").innerHTML = tbLado(k, o) + `<div class="tb-bts"><button data-tb-lado="est" class="${TB.lado === "est" ? "on" : ""}">Estatísticas</button><button data-tb-lado="rod" class="${TB.lado === "rod" ? "on" : ""}">Rodadas</button></div>`;
+}
+$("tb-modal").addEventListener("click", e => {
+  if (e.target === $("tb-modal") || e.target.closest("#tb-fechar")) { $("tb-modal").classList.remove("on"); return; }
+  const c = e.target.closest("[data-tb-cat]"); if (c) { TB.cat = c.dataset.tbCat; const L = tbListas(), meu = T().demitido ? null : T().clube; TB.comp = (L[TB.cat].find(x => tbParticipa(x[0], meu)) || L[TB.cat][0])[0]; TB.fase = null; TB.rod = null; desenharTabelas(); return; }
+  const l = e.target.closest("[data-tb-lado]"); if (l) { TB.lado = l.dataset.tbLado; desenharTabelas(); return; }
+  const r = e.target.closest("[data-tb-rod]"); if (r) { TB.rod += Number(r.dataset.tbRod); desenharTabelas(); }
+});
+$("tb-comp").onchange = () => { TB.comp = $("tb-comp").value; TB.fase = null; TB.rod = null; desenharTabelas(); };
+$("tb-fase").onchange = () => { TB.fase = $("tb-fase").value; desenharTabelas(); };
+addEventListener("keydown", e => { if (e.key === "Escape") $("tb-modal").classList.remove("on"); });
+
 
 /* =====================================================================
    FINANÇAS E MERCADO DE TRANSFERÊNCIAS (carreira)
@@ -3105,7 +3260,7 @@ abrirCarreira = function () { _abrirCarreiraPl(); if (!C || VER_TABELAS) return;
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-pl]"); if (!b || !C) return;
   const a = b.dataset.pl;
-  if (a === "tabelas") { VER_TABELAS = true; abrirCarreira(); tela("carreira"); }
+  if (a === "tabelas") abrirTabelas();
   else if (a === "agenda") abrirAgenda();
   else if (a === "estadio") abrirEstadio();
   else if (a === "procura") abrirMercado();
