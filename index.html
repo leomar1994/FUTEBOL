@@ -1869,7 +1869,20 @@ const VOZ = window.VOZ = (() => {
       const fr = (ESTILOS[cfg.estilo] || ESTILOS.classico).frases;
       return EVENTOS.flatMap(([k, n]) => (fr[k] || []).map((f, i) => ({ k, chave: `${k}#${i}`, lance: n, frase: f })));
     },
-    async arquivo(k, f) { if (f) { await guardar(k, f); abrirConfigVoz(); } },
+    async arquivo(k, fs) { const l = [...(fs || [])]; for (const [i, f] of l.entries()) await guardar(`${k}#a${Date.now()}${i}`, f); if (l.length) abrirConfigVoz(); },
+    // pacote de narração (como os patches): vários arquivos de uma vez; o nome do arquivo diz o lance (gol1.mp3, falta_2.ogg, trave.wav...)
+    async pacote(fs) {
+      const lance = nome => { const n = String(nome).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        return /impedi/.test(n) ? "impedimento" : /penal/.test(n) ? "penalti" : /vermelh|expuls/.test(n) ? "vermelho" : /amarel|cartao/.test(n) ? "cartao" : /trave|travess|poste/.test(n) ? "trave"
+          : /defes|defend|goleiro|salvou/.test(n) ? "defesa" : /falta/.test(n) ? "falta" : /interval/.test(n) ? "intervalo" : /inicio|comeca|rola|abertura/.test(n) ? "inicio"
+          : /fim|final|encerr|acabou|termin/.test(n) ? "fim" : /fora|perdeu|passou|uuh|errou|isolou/.test(n) ? "fora" : /gol|goo/.test(n) ? "gol" : null; };
+      const ok = {}, nao = [];
+      for (const [i, f] of [...(fs || [])].entries()) { if (!/^audio\//.test(f.type) && !/\.(mp3|ogg|wav|m4a|aac|webm|opus)$/i.test(f.name)) continue; const k = lance(f.name);
+        if (!k) { nao.push(f.name); continue; } await guardar(`${k}#p${Date.now()}${i}`, f); ok[k] = (ok[k] || 0) + 1; }
+      if (Object.keys(ok).length && cfg.modo !== "gravacoes") this.setar({ modo: "gravacoes" });
+      abrirConfigVoz(); const res = Object.entries(ok).map(([k, n]) => `${EVENTOS.find(e => e[0] === k)[1]}: ${n}`).join(" · ");
+      $("voz-pacote-res").textContent = (res ? "✅ Importado — " + res : "Nenhum áudio reconhecido.") + (nao.length ? ` · Sem lance no nome (renomeie com gol, falta, defesa…): ${nao.slice(0, 6).join(", ")}${nao.length > 6 ? "…" : ""}` : "");
+    },
     async apagar(k) { for (const x of variantes(k)) await apagar(x); abrirConfigVoz(); },
     tem: k => variantes(k).length > 0, qtd: k => variantes(k).length,
     setar(o) { Object.assign(cfg, o); salvarCfg(); this.botao(); if ("vozNarr" in o || "vozCom" in o) escolher(); },
@@ -1890,9 +1903,11 @@ function abrirConfigVoz() {
         <br><span class="dica">Vozes grátis do seu aparelho. As melhores têm “Natural” ou “Online” no nome (Edge, Windows) ou “Google” (Chrome, Android).</span></p>` : `<p class="dica">Este navegador não mostrou vozes em português. Use o Edge ou o Chrome.</p>`; })()}
     <p><label><input type="checkbox" id="voz-coment" ${c.coment ? "checked" : ""}> Comentarista depois da narração (destaques e quem está jogando mal, em 1x e 2x)</label></p>
     <p><label><input type="checkbox" id="voz-sons" ${c.sons ? "checked" : ""}> Sons do estádio (apito e torcida)</label> · Volume <input type="range" id="voz-vol" min="0" max="1" step=".05" value="${c.vol}"></p>
-    <p><button class="prim" id="voz-roteiro">📝 Gravar com a minha voz (roteiro)</button> <span class="dica">Leia as frases em voz alta, uma por vez. O jogo passa a narrar com a sua voz.</span></p>
+    <p><label class="bt-arq" style="display:inline-block;cursor:pointer;padding:7px 12px;border:1px solid var(--borda);border-radius:8px;background:var(--verde);color:#08130c;font-weight:700">📦 Importar pacote de narração<input type="file" id="voz-pacote" accept="audio/*,.mp3,.ogg,.wav,.m4a" multiple hidden></label>
+      <span class="dica">Selecione vários áudios de uma vez, como num patch. O nome de cada arquivo diz o lance: <b>gol</b>, <b>falta</b>, <b>penalti</b>, <b>amarelo</b>, <b>vermelho</b>, <b>defesa</b>, <b>trave</b>, <b>fora</b>, <b>impedimento</b>, <b>inicio</b>, <b>intervalo</b>, <b>fim</b> (ex.: gol1.mp3, gol2.mp3, falta.mp3).</span><br><span id="voz-pacote-res" class="dica"></span></p>
+    <p><button id="voz-roteiro">📝 Gravar com a minha voz (roteiro)</button> <span class="dica">Leia as frases em voz alta, uma por vez. O jogo passa a narrar com a sua voz.</span></p>
     <table class="tab"><thead><tr><th>Lance</th><th>Gravação</th><th></th></tr></thead><tbody>${VOZ.EVENTOS.map(([k, n]) => `<tr><td>${n}</td><td>${VOZ.tem(k) ? `✅ ${VOZ.qtd(k)} sua${VOZ.qtd(k) > 1 ? "s" : ""}` : "<span class='dica'>frase do jogo</span>"}</td>
-      <td><button data-vz-ouvir="${k}">▶</button> <button data-vz-gravar="${k}">🎙 Gravar</button> <label class="dica" style="cursor:pointer">📁<input type="file" accept="audio/*" data-vz-arq="${k}" hidden></label>${VOZ.tem(k) ? ` <button data-vz-apagar="${k}" title="Voltar à frase do jogo">🗑</button>` : ""}</td></tr>`).join("")}</tbody></table>
+      <td><button data-vz-ouvir="${k}">▶</button> <button data-vz-gravar="${k}">🎙 Gravar</button> <label class="dica" style="cursor:pointer" title="Escolher um ou mais áudios para este lance">📁<input type="file" accept="audio/*" multiple data-vz-arq="${k}" hidden></label>${VOZ.tem(k) ? ` <button data-vz-apagar="${k}" title="Voltar à frase do jogo">🗑</button>` : ""}</td></tr>`).join("")}</tbody></table>
     <p class="dica">Use só gravações suas ou que você tenha permissão de usar. As gravações ficam neste navegador.</p>`;
   $("m-voz").classList.add("on");
 }
@@ -1929,7 +1944,8 @@ $("m-voz").addEventListener("change", e => {
   if (e.target.id === "voz-narr") { VOZ.setar({ vozNarr: e.target.value }); VOZ.teste("gol"); }
   if (e.target.id === "voz-com") { VOZ.setar({ vozCom: e.target.value }); VOZ.testarComent(); }
   if (e.target.id === "voz-vol") VOZ.setar({ vol: Number(e.target.value) });
-  if (e.target.dataset.vzArq) VOZ.arquivo(e.target.dataset.vzArq, e.target.files[0]);
+  if (e.target.dataset.vzArq) VOZ.arquivo(e.target.dataset.vzArq, e.target.files);
+  if (e.target.id === "voz-pacote") VOZ.pacote(e.target.files);
 });
 $("m-voz").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.vzOuvir) VOZ.teste(b.dataset.vzOuvir); if (b.dataset.vzGravar) VOZ.gravar(b.dataset.vzGravar, b); if (b.dataset.vzApagar) VOZ.apagar(b.dataset.vzApagar); });
