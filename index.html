@@ -144,6 +144,9 @@
   @media (max-width: 760px) { .esc-grade { grid-template-columns: 1fr; } }
   .prancheta { position: relative; width: 100%; aspect-ratio: 68 / 105; border-radius: 10px; touch-action: none; user-select: none;
     background: repeating-linear-gradient(0deg, #2f7a3b 0 8.33%, #2b7136 8.33% 16.66%); border: 3px solid rgba(255,255,255,.8); overflow: hidden; }
+  .prancheta .slot { position: absolute; transform: translate(-50%, -50%); width: 15%; height: 7.2%; border-radius: 9px; background: rgba(0,0,0,.26); border: 1px dashed rgba(255,255,255,.18);
+    color: rgba(255,255,255,.62); font-size: 10px; font-weight: 800; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; pointer-events: none; z-index: 1; }
+  .prancheta .slot.bom { background: rgba(60,220,120,.28); border-color: rgba(120,255,170,.6); color: #fff; } .prancheta .slot.meio { background: rgba(240,200,60,.22); border-color: rgba(255,220,120,.5); }
   .prancheta .ln { position: absolute; border: 2px solid rgba(255,255,255,.7); pointer-events: none; }
   .dot { position: absolute; transform: translate(-50%, -50%); text-align: center; cursor: grab; z-index: 2; width: 86px; touch-action: none; }
   .dot .c { width: 34px; height: 34px; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; border: 3px solid; box-shadow: 0 0 0 3px var(--anel, transparent), 0 3px 6px rgba(0,0,0,.4); }
@@ -524,27 +527,31 @@ const CAR_POS = { GOL: ["ref", "ppn", "sai"], ZAG: ["des", "mar", "cab", "res"],
   MC: ["pas", "lon", "res", "dri", "fal"], MEI: ["pas", "dri", "lon", "fal", "fin"], PE: ["dri", "vel", "cru", "fin", "fal"], PD: ["dri", "vel", "cru", "fin", "fal"], CA: ["fin", "cab", "pen", "vel", "dri"] };
 const CAR_CACHE = new Map();
 function caracteristicas(nome, pos, forca) {
-  const chave = nome + "|" + pos; if (CAR_CACHE.has(chave)) return CAR_CACHE.get(chave);
+  const chave = nome + "|" + pos; if (CAR_CACHE.has(chave)) return comAprendidas(CAR_CACHE.get(chave), chave);
   const r = semente("car" + chave), op = [...(CAR_POS[pos] || ["res"])], out = [];
   const n = forca >= 78 ? 2 : forca >= 68 ? (r() < .6 ? 2 : 1) : forca >= 58 ? (r() < .55 ? 1 : 0) : (r() < .3 ? 1 : 0);
   for (let i = 0; i < n && op.length; i++) out.push(op.splice(Math.floor(r() * op.length), 1)[0]);
   if (r() < .12) out.push(r() < .55 ? "ind" : "fol");
-  CAR_CACHE.set(chave, out); return out;
+  CAR_CACHE.set(chave, out); return comAprendidas(out, chave);
 }
+// o que o jogador aprendeu com a experiência (carreira): novas características, defeitos corrigidos e posições novas
+const aprendDe = (nome, pos) => (typeof C !== "undefined" && C?.aprend?.[nome + "|" + pos]) || null;
+function comAprendidas(base, chave) { const a = typeof C !== "undefined" && C?.aprend?.[chave]; if (!a) return base; return [...base.filter(k => !(a.sem || []).includes(k)), ...(a.car || []).filter(k => !base.includes(k))]; }
+const posAprendidas = (nome, pos) => aprendDe(nome, pos)?.pos || [];
 const tem = (p, k) => !!p?.car?.includes(k);
 const carHtml = l => (l || []).map(k => `<span class="car ${k === "ind" || k === "fol" ? "neg" : ""}" title="${CAR[k][1]}">${CAR[k][0]}</span>`).join("");
 const carJog = j => carHtml(caracteristicas(j[0], j[1], j[2]));            // jogador no formato [nome, pos, força, idade]
 const LEGENDA_CAR = `<details class="dica"><summary>O que significam as características?</summary>${Object.values(CAR).map(([n, d]) => `<div><b>${n}</b>: ${d}</div>`).join("")}</details>`;
 
 function montarTime(base, formacao, estilo, lado) {
-  const pool = base.jogadores.map(([nome, pos, forca, idade], i) => ({ id: base.id + i, nome, pos, forca, idade, num: 0 }));
+  const pool = base.jogadores.map(([nome, pos, forca, idade], i) => ({ id: base.id + i, nome, pos, forca, idade, num: 0, pos2: posAprendidas(nome, pos) }));
   const slots = FORMACOES[formacao], titulares = [];
   const usados = new Set();
   // preenche primeiro as posições mais específicas (goleiro, laterais), depois as demais
   const ordem = slots.map((s, i) => i).sort((a, b) => (slots[a][0] === "GOL" ? -1 : 0) - (slots[b][0] === "GOL" ? -1 : 0));
   for (const i of ordem) {
     const [papel] = slots[i];
-    const cand = pool.filter(p => !usados.has(p.id)).map(p => { const k = PARECE[papel].indexOf(p.pos); return { p, v: k < 0 ? -1 : p.forca - k * 7 }; }).filter(x => x.v >= 0).sort((a, b) => b.v - a.v);
+    const cand = pool.filter(p => !usados.has(p.id)).map(p => { const k = grauPos(papel, p.pos, p.pos2); return { p, v: k < 0 ? -1 : p.forca - k * 7 }; }).filter(x => x.v >= 0).sort((a, b) => b.v - a.v);
     const esc1 = cand[0]?.p || pool.find(p => !usados.has(p.id));
     usados.add(esc1.id); titulares[i] = esc1;
   }
@@ -624,7 +631,8 @@ function posicionar() {                                   // posição de cada b
 function congelarPos() { for (const t of [J.casa, J.fora]) for (const p of ativos(t)) { p.px = p.x; p.py = p.y; } if (J.juiz) J.juizP = { ...J.juiz }; }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const perto = (t, alvo) => ativos(t).filter(p => p.papel !== "GOL").sort((a, b) => dist(a, alvo) - dist(b, alvo))[0];
-const adapt = p => { const k = (PARECE[p.papel] || []).indexOf(p.pos); return k < 0 ? 0.8 : 1 - k * 0.05; };   // fora de posição rende menos
+function grauPos(papel, pos, pos2) { if (pos === papel || pos2?.includes(papel)) return 0; return (PARECE[papel] || []).indexOf(pos); }   // 0 = posição dele (ou aprendida)
+const adapt = p => { const k = grauPos(p.papel, p.pos, p.pos2); return k < 0 ? 0.8 : 1 - k * 0.05; };   // fora de posição rende menos
 const MARC = { leve: { tackle: .06, falta: .2, cartao: .12, verm: .008, lane: 8, folego: -.08 }, normal: { tackle: 0, falta: .34, cartao: .22, verm: .015, lane: 9, folego: 0 },
   pesado: { tackle: -.06, falta: .4, cartao: .28, verm: .015, lane: 10, folego: .1 }, mpesado: { tackle: -.11, falta: .46, cartao: .34, verm: .022, lane: 11, folego: .18 } };
 const marc = t => MARC[t?.marcacao] || MARC.normal;
@@ -1102,6 +1110,13 @@ requestAnimationFrame(desenhar);
 
 /* ===================== ESCALAÇÃO: prancheta com arrastar e soltar ===================== */
 let ESC_TIME = null, ESC_MODO = "pre";   // "pre" = antes da partida · "jogo" = durante (trocar com reserva conta como substituição)
+// lugares do campo (como uma grade): cada um tem o nome da posição; o botão solto num lugar vazio encaixa no mais perto
+const LUGARES = [[.07, .5, "GOL"],
+  ...[[.08, "LE"], [.29, "ZAG"], [.5, "ZAG"], [.71, "ZAG"], [.92, "LD"]].map(([y, r]) => [.2, y, r]),
+  ...[[.08, "LE"], [.29, "VOL"], [.5, "VOL"], [.71, "VOL"], [.92, "LD"]].map(([y, r]) => [.36, y, r]),
+  ...[[.1, "PE"], [.3, "MC"], [.5, "MC"], [.7, "MC"], [.9, "PD"]].map(([y, r]) => [.51, y, r]),
+  ...[[.12, "PE"], [.31, "MEI"], [.5, "MEI"], [.69, "MEI"], [.88, "PD"]].map(([y, r]) => [.66, y, r]),
+  ...[[.14, "PE"], [.33, "CA"], [.5, "CA"], [.67, "CA"], [.86, "PD"]].map(([y, r]) => [.82, y, r])];
 function papelDaPos(bx, by, gol) {
   if (gol) return "GOL";
   if (bx < .3) return by < .25 ? "LE" : by > .75 ? "LD" : "ZAG";
@@ -1116,7 +1131,7 @@ function aplicarFormacao(t, formacao) {                    // reorganiza os 11 a
   const usados = new Set([gk]);
   slots.forEach((sl, i) => {
     if (sl[0] === "GOL") { novo[i] = gk; return; }
-    const c = resto.filter(p => !usados.has(p)).sort((a, b) => { const ka = PARECE[sl[0]].indexOf(a.pos), kb = PARECE[sl[0]].indexOf(b.pos); return (ka < 0 ? 9 : ka) - (kb < 0 ? 9 : kb) || b.forca - a.forca; })[0];
+    const c = resto.filter(p => !usados.has(p)).sort((a, b) => { const ka = grauPos(sl[0], a.pos, a.pos2), kb = grauPos(sl[0], b.pos, b.pos2); return (ka < 0 ? 9 : ka) - (kb < 0 ? 9 : kb) || b.forca - a.forca; })[0];
     if (c) { usados.add(c); novo[i] = c; }
   });
   novo.forEach((p, i) => { if (p) Object.assign(p, { papel: slots[i][0], bx: slots[i][1], by: slots[i][2] }); });
@@ -1141,13 +1156,13 @@ function abrirEscalacao(modo) {
   desenharEscalacao(); $("m-esc").classList.add("on");
 }
 const timeEsc = () => ESC_MODO === "pre" ? ESC_TIME : J.meu;
-function corAdapt(p) { const k = (PARECE[p.papel] || []).indexOf(p.pos); return k === 0 ? "var(--verde)" : k > 0 ? "var(--amar)" : "var(--verm)"; }
+function corAdapt(p) { const k = grauPos(p.papel, p.pos, p.pos2); return k === 0 ? "var(--verde)" : k > 0 ? "var(--amar)" : "var(--verm)"; }
 function desenharEscalacao() {
   const t = timeEsc(), pr = $("prancheta");
   const linhas = `<div class="ln" style="left:-2px;right:-2px;top:50%;height:0"></div><div class="ln" style="left:50%;top:50%;width:26.9%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%)"></div>
     <div class="ln" style="left:20.4%;right:20.4%;top:-2px;height:15.7%"></div><div class="ln" style="left:20.4%;right:20.4%;bottom:-2px;height:15.7%"></div>
     <div class="ln" style="left:36.5%;right:36.5%;top:-2px;height:5.2%"></div><div class="ln" style="left:36.5%;right:36.5%;bottom:-2px;height:5.2%"></div>`;
-  pr.innerHTML = linhas + t.jog.map((p, i) => `<div class="dot ${p.fora ? "morto" : ""}" data-slot="${i}" style="left:${(p.by * 100).toFixed(1)}%;top:${((1 - p.bx) * 100).toFixed(1)}%;--anel:${corAdapt(p)}">
+  pr.innerHTML = linhas + LUGARES.map(([bx, by, r], i) => `<div class="slot" data-lugar="${i}" data-r="${r}" style="left:${(by * 100).toFixed(1)}%;top:${((1 - bx) * 100).toFixed(1)}%">${r}</div>`).join("") + t.jog.map((p, i) => `<div class="dot ${p.fora ? "morto" : ""}" data-slot="${i}" style="left:${(p.by * 100).toFixed(1)}%;top:${((1 - p.bx) * 100).toFixed(1)}%;--anel:${corAdapt(p)}">
       <div class="c" style="background:${p.papel === "GOL" ? "#e9c46a" : t.cor};border-color:${t.cor2};color:${p.papel === "GOL" ? "#222" : t.cor2}">${p.num}</div>
       <div class="nm">${esc(p.nome)}</div><div class="pp">${p.papel}${p.pos !== p.papel ? " (" + p.pos + ")" : ""}</div></div>`).join("");
   const lj = (p, tipo) => `<div class="lj ${tipo} ${p.saiu || p.fora ? "saiu" : ""}" data-jog="${p.id}"><b>${p.num}</b><span>${esc(p.nome)} ${carHtml(p.car)}${p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : ""}${p.saiu ? " (saiu)" : ""}${J && ESC_MODO === "jogo" && !p.saiu && tipo === "tit" ? ` <small class="dica">nota ${p.nota.toFixed(1)} · fôlego ${Math.round(p.folego)}%</small>` : ""}${ESC_MODO === "pre" && p.energiaIni != null ? ` <small class="dica">⚡${p.energiaIni}%</small> ${barraEnergia(p.energiaIni)}` : ""}</span><span class="pos">${p.pos}</span><span class="f">${p.forca}</span></div>`;
@@ -1176,6 +1191,7 @@ function iniciarArrasto(e) {
   if (!p || p.fora || p.saiu) return;
   e.preventDefault();
   arr = { p, de: dot ? "campo" : "lista", x0: e.clientX, y0: e.clientY, mexeu: false, fantasma: null, alvo: null };
+  for (const sl of document.querySelectorAll("#prancheta .slot")) { const k = grauPos(sl.dataset.r, p.pos, p.pos2); sl.classList.toggle("bom", k === 0); sl.classList.toggle("meio", k > 0); }   // mostra onde ele rende
 }
 function moverArrasto(e) {
   if (!arr) return;
@@ -1189,7 +1205,7 @@ function moverArrasto(e) {
 }
 function soltarArrasto(e) {
   if (!arr) return;
-  const a = arr; arr = null; a.fantasma?.remove(); document.querySelectorAll(".alvo").forEach(x => x.classList.remove("alvo"));
+  const a = arr; arr = null; a.fantasma?.remove(); document.querySelectorAll(".alvo").forEach(x => x.classList.remove("alvo")); document.querySelectorAll("#prancheta .slot").forEach(x => x.classList.remove("bom", "meio"));
   if (!a.mexeu) return;
   const t = timeEsc(), sob = document.elementFromPoint(e.clientX, e.clientY);
   const dot = sob?.closest(".dot:not(.morto)"), lj = sob?.closest(".lj:not(.saiu)"), campo = sob?.closest("#prancheta");
@@ -1198,8 +1214,10 @@ function soltarArrasto(e) {
   if (q && q !== a.p) trocarNaEscalacao(a.p, q);
   else if (campo && !q && t.jog.includes(a.p)) {            // soltou num espaço vazio: muda a posição do botão
     const r = $("prancheta").getBoundingClientRect(), by = lim((e.clientX - r.left) / r.width, .05, .95), bx = 1 - (e.clientY - r.top) / r.height;
-    const gol = a.p.papel === "GOL";
-    a.p.bx = gol ? lim(bx, .02, .12) : lim(bx, .14, .9); a.p.by = gol ? lim(by, .35, .65) : by; a.p.papel = papelDaPos(a.p.bx, a.p.by, gol);
+    const gol = a.p.papel === "GOL", ocupado = l => t.jog.some(q => q !== a.p && !q.fora && Math.abs(q.bx - l[0]) < .05 && Math.abs(q.by - l[1]) < .07);
+    const lugar = LUGARES.filter(l => (l[2] === "GOL") === gol && !ocupado(l)).sort((x, y) => Math.hypot(x[0] - bx, (x[1] - by) * .65) - Math.hypot(y[0] - bx, (y[1] - by) * .65))[0];
+    if (lugar) { a.p.bx = lugar[0]; a.p.by = lugar[1]; a.p.papel = lugar[2]; }
+    else { a.p.bx = gol ? lim(bx, .02, .12) : lim(bx, .14, .9); a.p.by = gol ? lim(by, .35, .65) : by; a.p.papel = papelDaPos(a.p.bx, a.p.by, gol); }
     t.formacao = "Personalizada";
     if (![...$("esc-form").options].some(o => o.value === "Personalizada")) $("esc-form").add(new Option("Personalizada"));
     $("esc-form").value = "Personalizada";
@@ -1604,7 +1622,7 @@ function forcaEscalada(id) {                              // força para simular
   if (!tec) return forcaTime(t);
   const xi = xiSimulado(id, tec).map(([papel, j]) => [{ papel }, j]);
   if (!xi.length) return 45;
-  return xi.reduce((a, [s, j]) => a + j[2] * (0.86 + 0.14 * energia(id, j[0]) / 100) - ((PARECE[s.papel] || []).indexOf(j[1]) === 0 ? 0 : (PARECE[s.papel] || []).includes(j[1]) ? 3 : 9), 0) / xi.length - (11 - Math.min(11, xi.length)) * 3;
+  return xi.reduce((a, [s, j]) => { const k = grauPos(s.papel, j[1], posAprendidas(j[0], j[1])); return a + j[2] * (0.86 + 0.14 * energia(id, j[0]) / 100) - (k === 0 ? 0 : k > 0 ? 3 : 9); }, 0) / xi.length - (11 - Math.min(11, xi.length)) * 3;
 }
 function fimDoJogoCarreira(fim) {
   VER_TABELAS = false;
@@ -1701,6 +1719,25 @@ $("est-ampliar").onclick = () => { const tec = T(), e = estadio(tec.clube), c = 
   tec.tokens -= c; e.amplia = (e.amplia || 0) + 1; e.obra = { mais: 5000, resta: 3 }; salvar(); abrirEstadio(); $("est-msg").textContent = "🏗 Obra iniciada! Fica pronta depois de 3 jogos em casa."; };
 $("est-fechar").onclick = () => { $("m-estadio").classList.remove("on"); abrirCarreira(); };
 $("c-estadio").onclick = abrirEstadio;
+/* ---------- experiência: jogar dá XP; com 100 o jogador sobe 1 de força e pode aprender algo novo ---------- */
+const xpDe = (clube, nome) => C?.xp?.[clube]?.[nome] || 0;
+function ganharXP(tec, id, nome, ganho) {
+  const t = timePorId(id), j = t.jogadores.find(x => x[0] === nome); if (!j || !(ganho > 0)) return;
+  const fator = j[3] <= 21 ? 1.6 : j[3] <= 25 ? 1.25 : j[3] <= 29 ? 1 : j[3] <= 32 ? .7 : .45;
+  const c = ((C.xp ||= {})[id] ||= {}); c[nome] = (c[nome] || 0) + Math.max(1, ganho * fator);
+  while (c[nome] >= 100) {
+    c[nome] -= 100;
+    if (j[2] >= 95) { c[nome] = 99; break; }
+    j[2]++; marcarMudado(id);
+    const msgs = [`📈 ${nome} ganhou experiência e subiu para força ${j[2]}!`], chave = nome + "|" + j[1], a = ((C.aprend ||= {})[chave] ||= { car: [], pos: [], sem: [] });
+    const atuais = caracteristicas(nome, j[1], j[2]), r = Math.random();
+    const defeito = atuais.find(k => k === "ind" || k === "fol");
+    if (defeito && r < .2) { a.sem.push(defeito); msgs.push(`✨ ${nome} corrigiu o defeito "${CAR[defeito][0]}".`); }
+    else if (r < .42) { const op = (CAR_POS[j[1]] || []).filter(k => !atuais.includes(k)); if (op.length && atuais.filter(k => k !== "ind" && k !== "fol").length < 3) { const k = op[Math.floor(Math.random() * op.length)]; a.car.push(k); msgs.push(`✨ ${nome} aprendeu uma característica nova: ${CAR[k][0]}.`); } }
+    else if (r < .6) { const op = (PARECE[j[1]] || []).slice(1).filter(x => x !== "GOL" && !a.pos.includes(x)); if (op.length && a.pos.length < 2) { const x = op[0]; a.pos.push(x); msgs.push(`✨ ${nome} aprendeu a jogar também de ${x}.`); } }
+    for (const m of msgs) (C.avisosData[tec.nome] ||= []).push(m);
+  }
+}
 /* ---------- quem fez os gols (todos os jogos da carreira, para artilharia e estatísticas) ---------- */
 function autoresGols(clube, n) {
   if (!n) return [];
@@ -1729,6 +1766,7 @@ function registrarStats(tec, id, m, min, stJ) {
     }
   }
   for (const [nome, [g, a, n]] of Object.entries(st)) { const s = stDe(id, nome); s.tj++; s.cj++; s.tg += g; s.cg += g; s.ta += a; s.ca += a; s.tn += n; s.cn += n; }
+  for (const [nome, [, , n]] of Object.entries(st)) ganharXP(tec, id, nome, (min[nome] || 0) / 90 * (3.2 + (n - 6) * 2.2));
 }
 function mensagem(tec, txt) {
   (tec.msgs ||= []).unshift({ txt, quando: `${C.temporada} · ${rotuloData()}`, lida: false });
@@ -2735,7 +2773,8 @@ function desenharPlantel() {
   const craques = new Set(t.jogadores.slice().sort((a, b) => b[2] - a[2]).slice(0, 3).map(x => x[0]));
   const sel = jog.find(x => x[0] === PL_SEL), ss = sel ? stDe(id, sel[0]) : null, nm = (n, j) => j ? (n / j).toFixed(2) : "--";
   const card = sel ? `<div class="pl-card"><div style="display:flex;justify-content:space-between"><b>${esc(sel[0])}</b><b>F:${sel[2]}</b></div>
-      <div class="dica">${sel[1]} · pé ${peDe(sel[0]) === "D" ? "direito" : "esquerdo"} · ${sel[3]} anos</div><div style="margin:4px 0">${carJog(sel)}</div>
+      <div class="dica">${sel[1]}${posAprendidas(sel[0], sel[1]).length ? ` (também joga de ${posAprendidas(sel[0], sel[1]).join(", ")})` : ""} · pé ${peDe(sel[0]) === "D" ? "direito" : "esquerdo"} · ${sel[3]} anos</div>
+      <div class="dica" style="margin-top:4px">Experiência ${Math.round(xpDe(id, sel[0]))}/100 <span style="display:inline-block;width:110px;height:10px;background:#222;border-radius:4px;overflow:hidden;vertical-align:middle"><i style="display:block;height:100%;width:${Math.round(xpDe(id, sel[0]))}%;background:#6aa9ff"></i></span></div><div style="margin:4px 0">${carJog(sel)}</div>
       <div class="dica">Valor ${dinheiro(valorJog(sel))} · salário ${dinheiro(salarioJog(sel))}/rodada · ${lesao(id, sel[0]) ? `🚑 fora por ${lesao(id, sel[0])} jogo(s)` : `energia ${energia(id, sel[0])}%`}</div>
       <table class="tab" style="margin-top:6px"><thead><tr><th></th><th>Temporada</th><th>Carreira</th></tr></thead><tbody>
       <tr><td>Jogos</td><td>${ss.tj}</td><td>${ss.cj}</td></tr><tr><td>Gols</td><td>${ss.tg}</td><td>${ss.cg}</td></tr><tr><td>Assistências</td><td>${ss.ta}</td><td>${ss.ca}</td></tr><tr><td>Nota média</td><td>${nm(ss.tn, ss.tj)}</td><td>${nm(ss.cn, ss.cj)}</td></tr></tbody></table>
@@ -2743,12 +2782,13 @@ function desenharPlantel() {
   $("pl-lado").innerHTML = `<div style="display:flex;align-items:center;gap:10px">${escudo(t)}<div><h2 style="margin:0">${esc(t.nome)}</h2><div class="dica">${esc(tec.nome)} · ${NOME_DIV[tec.div]}</div></div></div>
     <p style="margin:8px 0 0">💰 <b>${dinheiro(f.caixa)}</b> · 🪙 ${tec.tokens || 0} · ✉️ ${nl}</p>
     ${barra(tec.conf, "Confiança da diretoria")}${barra(e.torcida, "Confiança da torcida")}${prox}${card}<p class="dica" style="text-align:right">👥 ${t.jogadores.length}/35</p>`;
-  $("pl-tab").innerHTML = `<thead><tr><th>P</th><th>Nome</th><th>Pé</th><th>F</th><th>Energia</th><th>Salário</th><th>Valor</th><th>Car.</th><th>Idade</th><th title="Jogos na temporada">J</th><th title="Gols na temporada">G</th><th title="Assistências na temporada">A</th><th title="Nota média na temporada">NM</th></tr></thead><tbody>` +
+  $("pl-tab").innerHTML = `<thead><tr><th>P</th><th>Nome</th><th>Pé</th><th>F</th><th>Energia</th><th>Salário</th><th>Valor</th><th>Car.</th><th>Idade</th><th title="Experiência: com 100 o jogador sobe 1 de força e pode aprender algo">XP</th><th title="Jogos na temporada">J</th><th title="Gols na temporada">G</th><th title="Assistências na temporada">A</th><th title="Nota média na temporada">NM</th></tr></thead><tbody>` +
     jog.map(x => { const s2 = stDe(id, x[0]), le = lesao(id, x[0]), en = energia(id, x[0]), v = f.venda.includes(x[0]);
-      return `<tr data-pl-jog="${esc(x[0])}" class="${x[0] === PL_SEL ? "sel" : ""}"><td>${x[1]}</td><td>${craques.has(x[0]) ? "⭐ " : ""}${esc(x[0])}${v ? " <span class='dica'>(à venda)</span>" : ""}</td><td>${peDe(x[0])}</td><td><b>${x[2]}</b></td>
+      const p2 = posAprendidas(x[0], x[1]), xp = Math.round(xpDe(id, x[0]));
+      return `<tr data-pl-jog="${esc(x[0])}" class="${x[0] === PL_SEL ? "sel" : ""}"><td>${x[1]}${p2.length ? `<span class="dica">/${p2.join("/")}</span>` : ""}</td><td>${craques.has(x[0]) ? "⭐ " : ""}${esc(x[0])}${v ? " <span class='dica'>(à venda)</span>" : ""}</td><td>${peDe(x[0])}</td><td><b>${x[2]}</b></td>
         <td>${le ? `🚑 ${le}` : `<span class="en"><i style="width:${en}%;background:${corEnergia(en)}"></i><span>${en}%</span></span>`}</td><td>${dinheiro(salarioJog(x))}</td><td>${dinheiro(valorJog(x))}</td>
         <td>${caracteristicas(x[0], x[1], x[2]).map(k => `<span class="car ${k === "ind" || k === "fol" ? "neg" : ""}" title="${CAR[k][0]}: ${CAR[k][1]}">${CAR[k][0].slice(0, 3)}</span>`).join("")}</td>
-        <td>${x[3]}</td><td>${s2.tj}</td><td>${s2.tg}</td><td>${s2.ta}</td><td>${s2.tj ? (s2.tn / s2.tj).toFixed(2) : "--"}</td></tr>`; }).join("") + "</tbody>";
+        <td>${x[3]}</td><td><span class="en" title="Experiência ${xp}/100"><i style="width:${xp}%;background:#6aa9ff"></i><span>${xp}</span></span></td><td>${s2.tj}</td><td>${s2.tg}</td><td>${s2.ta}</td><td>${s2.tj ? (s2.tn / s2.tj).toFixed(2) : "--"}</td></tr>`; }).join("") + "</tbody>";
   tela("plantel");
 }
 const _abrirCarreiraPl = abrirCarreira;
