@@ -1744,11 +1744,12 @@ const VOZ = window.VOZ = (() => {
     intervalo: ["Intervalo! Pega a pipoca que já voltamos!"], fim: ["Acabou o espetáculo! Obrigado, torcida!", "Fim de jogo! Até a próxima, minha gente!"] };
   const ESTILOS = { classico: { nome: "Narrador clássico", frases: CLASSICO, tom: 1, ritmo: 1.05 }, auditorio: { nome: "Zé do Auditório (apresentador animado)", frases: AUDITORIO, tom: 1.35, ritmo: 1.15 } };
   const BORDOES = new Proxy({}, { get: (_, k) => (ESTILOS[cfg.estilo] || ESTILOS.classico).frases[k] });
-  const cfg = Object.assign({ modo: "off", sons: true, vol: .9, estilo: "classico" }, (() => { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { return {}; } })());
+  const cfg = Object.assign({ modo: "off", sons: true, vol: .9, estilo: "classico", coment: true }, (() => { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { return {}; } })());
   const salvarCfg = () => { try { localStorage.setItem(LS, JSON.stringify(cfg)); } catch (e) {} };
-  let voz = null, ctx = null, tocando = null, ate = 0;
+  let voz = null, voz2 = null, ctx = null, tocando = null, ate = 0, ultComent = 0, comentou = new Set(); const ultFala = {};
   const escolher = () => { const vs = S?.getVoices?.() || []; const br = vs.filter(v => /pt[-_]BR/i.test(v.lang));
-    voz = br.find(v => /natural|online/i.test(v.name)) || br.find(v => /google/i.test(v.name)) || br[0] || vs.find(v => /^pt/i.test(v.lang)) || null; };
+    voz = br.find(v => /natural|online/i.test(v.name)) || br.find(v => /google/i.test(v.name)) || br[0] || vs.find(v => /^pt/i.test(v.lang)) || null;
+    voz2 = br.find(v => v !== voz && /natural|online/i.test(v.name)) || br.find(v => v !== voz) || voz; };   // comentarista: outra voz, se houver
   if (S) { escolher(); S.onvoiceschanged = escolher; }
   // ---- gravações do técnico (ficam neste navegador) ----
   const db = () => new Promise((ok, erro) => { const r = indexedDB.open("fut-narrador", 1); r.onupgradeneeded = () => r.result.createObjectStore("audios"); r.onsuccess = () => ok(r.result); r.onerror = () => erro(r.error); });
@@ -1799,19 +1800,53 @@ const VOZ = window.VOZ = (() => {
       if (k === "falta" || k === "penalti" || k === "cartao" || k === "vermelho" || k === "impedimento") apito(1); else if (k === "inicio") apito(1, true); else if (k === "intervalo") apito(2, true); else if (k === "fim") apito(3, true);
     }
     if (cfg.modo === "gravacoes" && audios[k]) { tocarArquivo(k); ate = Date.now() + 2500; return; }
-    let fala = sorte(BORDOES[k]);
+    const op = BORDOES[k].filter(f => f !== ultFala[k]); let fala = sorte(op.length ? op : BORDOES[k]); ultFala[k] = fala;   // não repete a mesma frase seguida
     if (k === "gol") { const m = txt.match(/GOOO+L do ([^!]+)!\s*([^,.!]+?) marca/i); if (m) fala += ` Gol do ${m[1]}! ${m[2]}!`; }
     if (k === "fim") { const m = txt.match(/:\s*(.+?)\s(\d+)\s*[×x]\s*(\d+)\s(.+?)\.?$/); if (m) fala += ` ${m[1]} ${m[2]}, ${m[4]} ${m[3]}.`; }
     setTimeout(() => dizer(fala, k === "gol"), cfg.sons && k !== "gol" ? 250 : 0); ate = Date.now() + 1800 + fala.length * 45;
+  }
+  // ---- COMENTARISTA: depois da narração, comenta quem está em destaque e quem está mal (pela nota, gols e fôlego) ----
+  const num = n => n.toFixed(1).replace(".", ",");
+  function avaliar() {
+    const l = [J.casa, J.fora].flatMap(t => ativos(t).filter(p => !p.fora).map(p => ({ p, t })));
+    return { bons: l.slice().sort((a, b) => b.p.nota - a.p.nota), ruins: l.slice().sort((a, b) => a.p.nota - b.p.nota) };
+  }
+  const FRASES_BOM = [(p, t) => `${p.nome} está fazendo uma partida e tanto, nota ${num(p.nota)}.`, (p, t) => `O ${t.curto} joga em volta do ${p.nome} hoje. Nota ${num(p.nota)}, o melhor em campo até aqui.`,
+    (p, t) => `Repara no ${p.nome}: ganha as divididas, aparece bem. Está voando.`, (p, t) => p.gols ? `${p.nome} já tem ${p.gols} gol${p.gols > 1 ? "s" : ""} e está com nota ${num(p.nota)}. Dia inspirado.` : `${p.nome} vem jogando muito: nota ${num(p.nota)}.`];
+  const FRASES_RUIM = [(p, t) => `O ${p.nome} não está bem, nota ${num(p.nota)}. O técnico do ${t.curto} pode pensar numa troca.`, (p, t) => `Partida apagada do ${p.nome}. Erra passes, perde a bola.`,
+    (p, t) => p.folego < 45 ? `${p.nome} está sentindo o cansaço: fôlego em ${Math.round(p.folego)} por cento.` : `${p.nome} precisa acordar, nota ${num(p.nota)}.`];
+  function falarComent(txt, espera = 0) {
+    if (!txt || !S) return;
+    setTimeout(() => { const u = new SpeechSynthesisUtterance(txt); u.lang = voz2?.lang || "pt-BR"; if (voz2) u.voice = voz2; u.rate = 1.02; u.pitch = voz2 && voz2 !== voz ? 1 : .8; u.volume = cfg.vol * .95; S.speak(u); }, espera);
+    ate = Math.max(ate, Date.now() + espera + 1500 + txt.length * 55); ultComent = minuto();
+  }
+  function comentar(motivo, extra) {
+    if (!cfg.coment || cfg.modo === "off" || !J || J.rapido || (J.vel || 1) > 2) return;
+    const { bons, ruins } = avaliar(), sorte = a => a[Math.floor(Math.random() * a.length)];
+    if (motivo === "gol" && extra) { const p = [J.casa, J.fora].flatMap(t => ativos(t).map(q => ({ p: q, t }))).find(x => x.p.nome === extra);
+      if (p) return falarComent(p.p.gols > 1 ? `${p.p.nome} de novo! ${p.p.gols} gols no jogo.` : sorte([`Gol merecido do ${p.p.nome}, vinha bem na partida.`, `Que finalização do ${p.p.nome}! Não deu chance.`, `O ${p.p.nome} estava esperando essa bola.`]), 2600); }
+    if (motivo === "intervalo" || motivo === "fim") {
+      const b = bons[0], r = ruins[0]; if (!b) return;
+      return falarComent(`${motivo === "fim" ? "Melhor em campo" : "No primeiro tempo, o destaque foi"}: ${b.p.nome}, do ${b.t.curto}, nota ${num(b.p.nota)}.${r && r.p.nota < 5.6 ? ` Quem decepcionou foi ${r.p.nome}, nota ${num(r.p.nota)}.` : ""}`, 3200);
+    }
+    // de tempos em tempos (a cada ~15 minutos), sem repetir o mesmo jogador
+    const bom = bons.find(x => x.p.nota >= 7 && !comentou.has(x.p.nome)), ruim = ruins.find(x => x.p.nota <= 5.4 && !comentou.has(x.p.nome));
+    const alvo = bom && ruim ? sorte([bom, ruim]) : bom || ruim; if (!alvo) return;
+    comentou.add(alvo.p.nome); if (comentou.size > 6) comentou = new Set([...comentou].slice(-3));
+    falarComent(sorte(alvo === bom ? FRASES_BOM : FRASES_RUIM)(alvo.p, alvo.t), 400);
   }
   const B = () => $("voz");
   return {
     EVENTOS, cfg, ESTILOS,
     falar(cls, html) {
       if (cfg.modo === "off" || !J || J.rapido) return;
-      const d = document.createElement("div"); d.innerHTML = html; const txt = d.textContent || "", k = evento(cls, txt); if (!k) return;
+      const d = document.createElement("div"); d.innerHTML = html; const txt = d.textContent || "", k = evento(cls, txt);
+      if (k === "inicio" && minuto() < 2) { ultComent = 0; comentou = new Set(); }
+      if (!k) { if (minuto() - ultComent >= 15 && minuto() > 8 && Date.now() > ate) comentar("tempo"); return; }
       const vel = J.vel || 1; if (vel >= 8 && !["gol", "fim"].includes(k)) return; if (vel >= 4 && !["gol", "fim", "penalti", "vermelho", "intervalo", "inicio"].includes(k)) return;
       narrarEvento(k, txt);
+      if (k === "gol") { const m = txt.match(/GOOO+L do [^!]+!\s*([^,.!]+?) marca/i); comentar("gol", m?.[1]); }
+      else if (k === "intervalo" || k === "fim") comentar(k);
     },
     calar() { try { S?.cancel(); } catch (e) {} try { tocando?.pause(); } catch (e) {} ate = 0; },
     botao() { const b = B(); if (b) b.textContent = cfg.modo === "off" ? "🔇 Narrador" : "🔊 Narrador"; },
@@ -1836,6 +1871,7 @@ function abrirConfigVoz() {
     <label><input type="radio" name="voz-modo" value="bordoes" ${c.modo === "bordoes" ? "checked" : ""}> Narrador do jogo (voz do navegador, só frases curtas)</label><br>
     <label><input type="radio" name="voz-modo" value="gravacoes" ${c.modo === "gravacoes" ? "checked" : ""}> Minhas gravações (onde não houver gravação, usa o narrador do jogo)</label></p>
     <p><b>Estilo:</b> ${Object.entries(VOZ.ESTILOS).map(([k, e]) => `<label style="margin-right:12px"><input type="radio" name="voz-estilo" value="${k}" ${c.estilo === k ? "checked" : ""}> ${e.nome}</label>`).join("")}</p>
+    <p><label><input type="checkbox" id="voz-coment" ${c.coment ? "checked" : ""}> Comentarista depois da narração (destaques e quem está jogando mal, em 1x e 2x)</label></p>
     <p><label><input type="checkbox" id="voz-sons" ${c.sons ? "checked" : ""}> Sons do estádio (apito e torcida)</label> · Volume <input type="range" id="voz-vol" min="0" max="1" step=".05" value="${c.vol}"></p>
     <table class="tab"><thead><tr><th>Lance</th><th>Gravação</th><th></th></tr></thead><tbody>${VOZ.EVENTOS.map(([k, n]) => `<tr><td>${n}</td><td>${VOZ.tem(k) ? "✅ sua" : "<span class='dica'>frase do jogo</span>"}</td>
       <td><button data-vz-ouvir="${k}">▶</button> <button data-vz-gravar="${k}">🎙 Gravar</button> <label class="dica" style="cursor:pointer">📁<input type="file" accept="audio/*" data-vz-arq="${k}" hidden></label>${VOZ.tem(k) ? ` <button data-vz-apagar="${k}" title="Voltar à frase do jogo">🗑</button>` : ""}</td></tr>`).join("")}</tbody></table>
@@ -1848,6 +1884,7 @@ $("m-voz").addEventListener("change", e => {
   if (e.target.name === "voz-modo") VOZ.setar({ modo: e.target.value });
   if (e.target.name === "voz-estilo") { VOZ.setar({ estilo: e.target.value }); VOZ.teste("gol"); }
   if (e.target.id === "voz-sons") VOZ.setar({ sons: e.target.checked });
+  if (e.target.id === "voz-coment") VOZ.setar({ coment: e.target.checked });
   if (e.target.id === "voz-vol") VOZ.setar({ vol: Number(e.target.value) });
   if (e.target.dataset.vzArq) VOZ.arquivo(e.target.dataset.vzArq, e.target.files[0]);
 });
