@@ -166,20 +166,25 @@
   /* editor */
   #ed-jog input, #ed-jog select { width: 100%; padding: 5px; font-size: 13px; }
   /* escalação (prancheta) */
-  .esc-grade { display: grid; grid-template-columns: minmax(260px, 400px) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .esc-grade { display: grid; grid-template-columns: minmax(280px, 460px) minmax(0, 1fr); gap: 14px; align-items: start; }
   @media (max-width: 760px) { .esc-grade { grid-template-columns: 1fr; } }
   .prancheta { position: relative; width: 100%; aspect-ratio: 68 / 105; border-radius: 10px; touch-action: none; user-select: none;
     background: repeating-linear-gradient(0deg, #2f7a3b 0 8.33%, #2b7136 8.33% 16.66%); border: 3px solid rgba(255,255,255,.8); overflow: hidden; }
-  .prancheta .slot { position: absolute; transform: translate(-50%, -50%); width: 15%; height: 7.2%; border-radius: 9px; background: rgba(0,0,0,.26); border: 1px dashed rgba(255,255,255,.18);
-    color: rgba(255,255,255,.62); font-size: 10px; font-weight: 800; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; pointer-events: none; z-index: 1; }
-  .prancheta .slot.bom { background: rgba(60,220,120,.28); border-color: rgba(120,255,170,.6); color: #fff; } .prancheta .slot.meio { background: rgba(240,200,60,.22); border-color: rgba(255,220,120,.5); }
+  .prancheta .slot { position: absolute; transform: translate(-50%, -26px); width: 40px; aspect-ratio: 52 / 56; pointer-events: none; z-index: 1; }
+  .prancheta .slot svg { width: 100%; height: 100%; display: block; } .prancheta .slot.bom svg path { fill: rgba(80,255,140,.45); } .prancheta .slot.meio svg path { fill: rgba(255,215,80,.4); }
   .prancheta .ln { position: absolute; border: 2px solid rgba(255,255,255,.7); pointer-events: none; }
-  .dot { position: absolute; transform: translate(-50%, -50%); text-align: center; cursor: grab; z-index: 2; width: 86px; touch-action: none; }
-  .dot .c { width: 34px; height: 34px; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; border: 3px solid; box-shadow: 0 0 0 3px var(--anel, transparent), 0 3px 6px rgba(0,0,0,.4); }
-  .dot .nm { font-size: 11.5px; font-weight: 700; background: rgba(0,0,0,.55); border-radius: 6px; padding: 1px 5px; margin-top: 3px; display: inline-block; max-width: 86px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dot .pp { font-size: 10px; color: #dfe; }
+  .dot { position: absolute; transform: translate(-50%, -26px); text-align: center; cursor: grab; z-index: 2; width: 19%; touch-action: none; }
+  .dot .cm { width: 40px; height: 43px; display: block; margin: 0 auto; filter: drop-shadow(0 2px 3px rgba(0,0,0,.45)); }
+  .dot .nm, .lj.cam .nm { font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot .pp, .lj.cam .pp { font-size: 10.5px; color: #fff; text-shadow: 0 1px 2px #000; white-space: nowrap; } .dot .pp b, .lj.cam .pp b { text-shadow: 0 1px 2px #000; }
   .dot.morto { opacity: .35; cursor: default; }
-  .dot.alvo .c, .lj.alvo { outline: 3px dashed #fff; outline-offset: 2px; }
+  .dot.alvo .cm, .lj.alvo { outline: 3px dashed #fff; outline-offset: 2px; }
+  .esc-lado { background: #7d8c80; border-radius: 4px; overflow: hidden; }
+  .esc-faixa { background: #2f5d1e; color: #fff; font-weight: 600; padding: 5px 10px; display: flex; justify-content: space-between; }
+  .esc-cams { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 4px 2px; padding: 8px 4px; min-height: 70px; }
+  .lj.cam { display: block; text-align: center; padding: 2px 0; border: 0; background: none; margin: 0; cursor: grab; }
+  .lj.cam .cm { width: 40px; height: 43px; display: block; margin: 0 auto; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
+  .lj.cam.saiu { opacity: .4; } .esc-les { padding: 0 10px; color: #f2f5f2; } .esc-cams > p { grid-column: 1 / -1; margin: 6px; color: #f2f5f2; }
   .lj { display: grid; grid-template-columns: 26px 1fr 40px 40px; gap: 6px; align-items: center; padding: 6px 8px; border: 1px solid var(--borda); border-radius: 8px; margin: 4px 0; background: var(--painel2); cursor: grab; touch-action: none; user-select: none; }
   .lj.tit { border-left: 4px solid var(--verde); } .lj.res { border-left: 4px solid #5d6b62; } .lj.saiu { opacity: .4; cursor: default; }
   .lj .pos { font-size: 12px; color: var(--fraco); } .lj .f { font-weight: 800; text-align: right; }
@@ -489,12 +494,12 @@
 <div class="modal" id="m-esc"><div class="janela" style="width:min(1060px,100%)">
   <div class="linha-campo"><h2 style="margin:0" id="esc-tit">📋 Escalação</h2>
     <span><label class="dica">Formação <select id="esc-form"></select></label> <label class="dica">Estilo <select id="esc-estilo"><option value="eq">Equilibrado</option><option value="of">Ofensivo</option><option value="de">Retranca</option></select></label> <label class="dica">Marcação <select id="esc-marcacao"><option value="leve">Leve</option><option value="normal" selected>Normal</option><option value="pesado">Pesado</option><option value="mpesado">Muito pesado</option></select></label> <label class="dica">Jogadas <select id="esc-jogada"><option value="misto" selected>Pelo meio e pelas laterais</option><option value="meio">Pelo meio</option><option value="lados">Pelas laterais</option></select></label> <label class="dica">Linha <select id="esc-linha"><option value="normal" selected>Normal</option><option value="alta">Alta</option></select></label> <button id="esc-auto">✨ Escalar automático</button></span></div>
-  <p class="dica" id="esc-ajuda">Arraste os botões no campo para mudar as posições. Arraste um jogador da lista para cima de um botão (ou um botão para cima de outro) para trocar.</p>
+  <p class="dica" id="esc-ajuda">Arraste as camisas no campo para mudar as posições. Arraste uma camisa do banco para cima de um titular para trocar.</p>
   <div class="esc-grade">
     <div><div class="prancheta" id="prancheta"></div>
       <div class="dica legenda">Posição: <i style="background:var(--verde)"></i>dele <i style="background:var(--amar)"></i>improvisado <i style="background:var(--verm)"></i>fora de posição</div>
       <div id="esc-cobs" style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;margin-top:10px;align-items:center"></div></div>
-    <div><h3>Titulares</h3><div id="esc-tit-l"></div><h3>Reservas</h3><div id="esc-res-l"></div></div>
+    <div class="esc-lado" id="esc-banco"></div>
   </div>
   <p style="text-align:right"><button id="esc-cancelar">↩ Voltar</button> <button class="prim" id="esc-ok">▶ Começar partida</button></p>
 </div></div>
@@ -526,11 +531,12 @@ let TIMES = [
 ];
 
 /* Formações: posições-base no próprio campo (x: 0 = o seu gol, 1 = gol adversário; y: 0–1 de uma lateral à outra) */
+// cada posição das formações é um dos 27 lugares da grade da prancheta (ver LUGARES): o botão fica dentro do lugar
 const FORMACOES = {
-  "4-4-2":   [["GOL",.05,.5],["LD",.24,.86],["ZAG",.2,.62],["ZAG",.2,.38],["LE",.24,.14],["PD",.47,.84],["MC",.42,.6],["VOL",.4,.4],["PE",.47,.16],["CA",.7,.6],["CA",.7,.4]],
-  "4-3-3":   [["GOL",.05,.5],["LD",.24,.86],["ZAG",.2,.62],["ZAG",.2,.38],["LE",.24,.14],["MC",.42,.7],["VOL",.37,.5],["MEI",.44,.3],["PD",.68,.85],["CA",.73,.5],["PE",.68,.15]],
-  "4-2-3-1": [["GOL",.05,.5],["LD",.24,.86],["ZAG",.2,.62],["ZAG",.2,.38],["LE",.24,.14],["VOL",.36,.6],["VOL",.36,.4],["PD",.56,.84],["MEI",.55,.5],["PE",.56,.16],["CA",.74,.5]],
-  "3-5-2":   [["GOL",.05,.5],["ZAG",.2,.75],["ZAG",.18,.5],["ZAG",.2,.25],["LD",.46,.9],["MC",.4,.67],["VOL",.35,.5],["MEI",.42,.33],["LE",.46,.1],["CA",.7,.6],["CA",.7,.4]]
+  "4-4-2":   [["GOL",.09,.5],["LD",.2,.9],["ZAG",.2,.7],["ZAG",.2,.3],["LE",.2,.1],["PD",.65,.9],["MC",.5,.7],["VOL",.35,.3],["PE",.65,.1],["CA",.8,.7],["CA",.8,.3]],
+  "4-3-3":   [["GOL",.09,.5],["LD",.2,.9],["ZAG",.2,.7],["ZAG",.2,.3],["LE",.2,.1],["MC",.5,.7],["VOL",.35,.5],["MEI",.65,.3],["PD",.8,.9],["CA",.8,.5],["PE",.8,.1]],
+  "4-2-3-1": [["GOL",.09,.5],["LD",.2,.9],["ZAG",.2,.7],["ZAG",.2,.3],["LE",.2,.1],["VOL",.35,.7],["VOL",.35,.3],["PD",.65,.9],["MEI",.65,.5],["PE",.65,.1],["CA",.8,.5]],
+  "3-5-2":   [["GOL",.09,.5],["ZAG",.2,.7],["ZAG",.2,.5],["ZAG",.2,.3],["LD",.35,.9],["MC",.5,.7],["VOL",.35,.5],["MEI",.65,.3],["LE",.35,.1],["CA",.8,.7],["CA",.8,.3]]
 };
 const PARECE = { GOL: ["GOL"], ZAG: ["ZAG","VOL","LD","LE"], LD: ["LD","ZAG","PD","VOL"], LE: ["LE","ZAG","PE","VOL"], VOL: ["VOL","MC","ZAG"], MC: ["MC","VOL","MEI"], MEI: ["MEI","MC","PE","PD"], PE: ["PE","PD","MEI","CA"], PD: ["PD","PE","MEI","CA"], CA: ["CA","PE","PD","MEI"] };
 const SETOR = { GOL: 0, ZAG: 1, LD: 1, LE: 1, VOL: 2, MC: 2, MEI: 2, PE: 3, PD: 3, CA: 3 };
@@ -665,7 +671,17 @@ function montarTime(base, formacao, estilo, lado) {
   const t = { base, nome: base.nome, curto: base.curto, cor: base.cor, cor2: base.cor2, lado, formacao, estilo, marcacao: "normal", jogada: "misto", linha: "normal",
     jog: titulares.map((p, i) => ent(p, slots[i])), banco: reservas.map(p => ent(p, null)), subs: 0, janelas: 0, gols: 0,
     st: { posse: 0, chutes: 0, alvo: 0, esc: 0, faltas: 0, amarelos: 0, vermelhos: 0, passes: 0, passesCertos: 0, desarmes: 0, defesas: 0 } };
-  t.cob = cobPadrao(t); return t;
+  t.cob = cobPadrao(t); definirBanco(t); return t;
+}
+// Banco de reservas: 12 relacionados (goleiro reserva + os 11 melhores); o resto fica em "Jogadores disponíveis" e não pode entrar no jogo
+const BANCO_MAX = 12;
+function definirBanco(t, nomes) {
+  let banco;
+  if (nomes?.length) banco = t.banco.filter(p => nomes.includes(p.nome)).slice(0, BANCO_MAX);
+  else { const gk = t.banco.filter(p => p.pos === "GOL").sort((a, b) => b.forca - a.forca)[0];
+    banco = [...(gk ? [gk] : []), ...t.banco.filter(p => p !== gk).sort((a, b) => b.forca - a.forca)].slice(0, BANCO_MAX); }
+  for (const p of t.banco) p.disp = !banco.includes(p);
+  t.banco = [...t.banco.filter(p => !p.disp), ...t.banco.filter(p => p.disp)];
 }
 /* cobradores oficiais e capitão (o técnico pode trocar na escalação) */
 const COBS = [["pen", "Pênalti"], ["fal", "Falta"], ["escE", "Escanteio esquerdo"], ["escD", "Escanteio direito"], ["cap", "Capitão"]];
@@ -1207,7 +1223,7 @@ function checarLesao() {
     const rod = 1 + Math.floor(Math.pow(rnd(), 2) * 7);
     p.lesao = rod; (J.lesoes ||= []).push({ t, p, rod });
     narrar("verm", `${minutoTxt()}🚑 ${p.nome} (${t.curto}) sente e cai no gramado. Não tem condições de continuar${rod > 1 ? ` — deve ficar fora por ${rod} jogos` : ""}.`);
-    const livres = t.banco.filter(b => !b.saiu && !b.entrou && !b.lesao && !(t.pend || []).some(x => x.entra === b));
+    const livres = t.banco.filter(b => !b.disp && !b.saiu && !b.entrou && !b.lesao && !(t.pend || []).some(x => x.entra === b));
     const sub = livres.sort((a, b) => (PARECE[p.papel].indexOf(a.pos) < 0) - (PARECE[p.papel].indexOf(b.pos) < 0) || b.forca - a.forca)[0];
     t.pend = (t.pend || []).filter(x => x.sai !== p);
     if (sub && t.subs + t.pend.length < 5) { t.pend.unshift({ sai: p, entra: sub }); bolaParada("lesao"); }
@@ -1240,7 +1256,7 @@ function iaSubstitui(t) {                                  // o técnico advers�
   if (m < t._prox) return;
   t._prox = m + Math.floor(entre(8, 14));
   const sai = ativos(t).filter(p => p.papel !== "GOL").sort((a, b) => (a.nota + a.folego / 40) - (b.nota + b.folego / 40))[0];
-  const entra = t.banco.filter(p => !p.entrou && !p.saiu).sort((a, b) => (PARECE[sai.papel].indexOf(a.pos) < 0 ? 1 : 0) - (PARECE[sai.papel].indexOf(b.pos) < 0 ? 1 : 0) || b.forca - a.forca)[0];
+  const entra = t.banco.filter(p => !p.disp && !p.entrou && !p.saiu).sort((a, b) => (PARECE[sai.papel].indexOf(a.pos) < 0 ? 1 : 0) - (PARECE[sai.papel].indexOf(b.pos) < 0 ? 1 : 0) || b.forca - a.forca)[0];
   if (sai && entra) substituir(t, sai, entra);
 }
 function substituir(t, sai, entra) {
@@ -1429,12 +1445,24 @@ requestAnimationFrame(desenhar);
 /* ===================== ESCALAÇÃO: prancheta com arrastar e soltar ===================== */
 let ESC_TIME = null, ESC_MODO = "pre";   // "pre" = antes da partida · "jogo" = durante (trocar com reserva conta como substituição)
 // lugares do campo (como uma grade): cada um tem o nome da posição; o botão solto num lugar vazio encaixa no mais perto
-const LUGARES = [[.07, .5, "GOL"],
-  ...[[.08, "LE"], [.29, "ZAG"], [.5, "ZAG"], [.71, "ZAG"], [.92, "LD"]].map(([y, r]) => [.2, y, r]),
-  ...[[.08, "LE"], [.29, "VOL"], [.5, "VOL"], [.71, "VOL"], [.92, "LD"]].map(([y, r]) => [.36, y, r]),
-  ...[[.1, "PE"], [.3, "MC"], [.5, "MC"], [.7, "MC"], [.9, "PD"]].map(([y, r]) => [.51, y, r]),
-  ...[[.12, "PE"], [.31, "MEI"], [.5, "MEI"], [.69, "MEI"], [.88, "PD"]].map(([y, r]) => [.66, y, r]),
-  ...[[.14, "PE"], [.33, "CA"], [.5, "CA"], [.67, "CA"], [.86, "PD"]].map(([y, r]) => [.82, y, r])];
+// 27 lugares: goleiro + zaga 5 · volantes/alas 5 · meio 3 · meias/pontas 5 · ataque 5 · ataque adiantado 3
+const LUGARES = [[.09, .5, "GOL"],
+  ...[[.1, "LE"], [.3, "ZAG"], [.5, "ZAG"], [.7, "ZAG"], [.9, "LD"]].map(([y, r]) => [.2, y, r]),
+  ...[[.1, "LE"], [.3, "VOL"], [.5, "VOL"], [.7, "VOL"], [.9, "LD"]].map(([y, r]) => [.35, y, r]),
+  ...[[.3, "MC"], [.5, "MC"], [.7, "MC"]].map(([y, r]) => [.5, y, r]),
+  ...[[.1, "PE"], [.3, "MEI"], [.5, "MEI"], [.7, "MEI"], [.9, "PD"]].map(([y, r]) => [.65, y, r]),
+  ...[[.1, "PE"], [.3, "CA"], [.5, "CA"], [.7, "CA"], [.9, "PD"]].map(([y, r]) => [.8, y, r]),
+  ...[[.3, "CA"], [.5, "CA"], [.7, "CA"]].map(([y, r]) => [.92, y, r])];   // 3 lugares mais adiantados, para empurrar os atacantes
+const noLugar = (p, l) => Math.abs(p.bx - l[0]) < .03 && Math.abs(p.by - l[1]) < .04;
+function encaixarNaGrade(t) {                            // táticas antigas: cada botão vai para o lugar livre mais perto (de preferência o da mesma posição)
+  const usados = new Set(), dist = (p, l) => Math.hypot(p.bx - l[0], (p.by - l[1]) * .65);
+  const vivos = t.jog.filter(p => !p.fora);
+  for (const p of vivos) { const l = LUGARES.find(l => noLugar(p, l)); if (l && !usados.has(l) && (l[2] === "GOL") === (p.papel === "GOL")) { usados.add(l); p._ok = 1; } }
+  for (const p of vivos) { if (p._ok) { delete p._ok; continue; }
+    const gol = p.papel === "GOL", livres = LUGARES.filter(l => !usados.has(l) && (l[2] === "GOL") === gol);
+    const l = livres.sort((x, y) => (x[2] !== p.papel) - (y[2] !== p.papel) || dist(p, x) - dist(p, y)).find(x => x[2] === p.papel && dist(p, x) < .2) || livres.sort((x, y) => dist(p, x) - dist(p, y))[0];
+    if (l) { usados.add(l); Object.assign(p, { bx: l[0], by: l[1], papel: l[2] }); } }
+}
 function papelDaPos(bx, by, gol) {
   if (gol) return "GOL";
   if (bx < .3) return by < .25 ? "LE" : by > .75 ? "LD" : "ZAG";
@@ -1462,29 +1490,44 @@ function abrirEscalacao(modo) {
     const base = TIMES.find(x => x.id === $("sel-meu").value);
     if (!ESC_TIME || ESC_TIME.base !== base) { ESC_TIME = montarTime(base, $("sel-form").value, $("sel-estilo").value, "casa"); if (MODO_CARREIRA && C && T()?.tatica) aplicarTatica(ESC_TIME, T().tatica); if (MODO_CARREIRA && C) ajustarFisico(ESC_TIME, base.id); }
   }
-  const t = timeEsc();
+  const t = timeEsc(); encaixarNaGrade(t);
   $("esc-form").innerHTML = [...Object.keys(FORMACOES), ...(FORMACOES[t.formacao] ? [] : [t.formacao])].map(f => `<option>${f}</option>`).join("");
   $("esc-form").value = t.formacao; $("esc-estilo").value = t.estilo; $("esc-marcacao").value = t.marcacao || "normal"; $("esc-jogada").value = t.jogada || "misto"; $("esc-linha").value = t.linha || "normal";
   $("esc-tit").textContent = `📋 Escalação — ${t.nome}`;
   $("esc-ok").textContent = modo === "pre" ? "▶ Começar partida" : "✔ Voltar ao jogo";
   $("esc-cancelar").hidden = modo !== "pre";
-  $("esc-ajuda").textContent = modo === "pre" ? "Arraste os botões no campo para mudar as posições. Arraste um jogador da lista para cima de um botão (ou um botão para cima de outro) para trocar quem joga."
+  $("esc-ajuda").textContent = modo === "pre" ? "Arraste as camisas no campo para os lugares vazios para mudar as posições. Arraste uma camisa do banco para cima de um titular (ou um titular para cima de outro) para trocar quem joga."
     : `O jogo continua rolando. Formação, estilo, marcação e posições mudam na hora. Trocar um titular por um reserva pede a substituição: ela acontece na próxima bola parada (falta, lateral, tiro de meta, escanteio ou gol). ${t.subs} de 5 usadas${t.pend?.length ? `, ${t.pend.length} aguardando` : ""}.`;
-  if (ESC_SALVAR) { $("esc-ok").textContent = "✔ Salvar escalação"; $("esc-ajuda").textContent = "Monte o time para o próximo jogo. Arraste os botões para mudar as posições; arraste um jogador da lista para cima de um botão para trocar quem joga. A escalação salva vale para jogar a partida e também para simular."; }
+  if (ESC_SALVAR) { $("esc-ok").textContent = "✔ Salvar escalação"; $("esc-ajuda").textContent = "Monte o time para o próximo jogo. Arraste as camisas para os lugares vazios para mudar as posições; arraste uma camisa do banco para cima de um titular para trocar quem joga. A escalação salva vale para jogar a partida e também para simular."; }
   desenharEscalacao(); $("m-esc").classList.add("on");
 }
 const timeEsc = () => ESC_MODO === "pre" ? ESC_TIME : J.meu;
+// camisa desenhada: listras com as cores do clube; sem time = silhueta do lugar vazio
+function camisaSvg(t, gol) {
+  const forma = "M14 4 L22 4 Q26 9 30 4 L38 4 L50 14 L44 24 L39 20 L39 52 L13 52 L13 20 L8 24 L2 14 Z";
+  if (!t) return `<svg class="cm" viewBox="0 0 52 56" aria-hidden="true"><path d="${forma}" fill="rgba(0,0,0,.32)"/></svg>`;
+  const c1 = gol ? "#2a2a2a" : t.cor, c2 = gol ? "#4a4a4a" : t.cor2, id = "cm" + (gol ? "g" : "") + String(t.curto || t.nome).replace(/\W/g, "");
+  return `<svg class="cm" viewBox="0 0 52 56" aria-hidden="true"><defs><clipPath id="${id}"><path d="${forma}"/></clipPath></defs>
+    <g clip-path="url(#${id})"><rect width="52" height="56" fill="${c1}"/>${gol ? "" : [17, 26, 35].map(x => `<rect x="${x - 2}" y="0" width="4" height="56" fill="${c2}" opacity=".85"/>`).join("")}
+    <path d="M2 14 L8 24 L13 20 L13 16 Z M50 14 L44 24 L39 20 L39 16 Z" fill="rgba(0,0,0,.25)"/></g>
+    <path d="${forma}" fill="none" stroke="rgba(0,0,0,.55)" stroke-width="1.5"/><path d="M22 4 Q26 9 30 4" fill="none" stroke="${gol ? "#888" : c2}" stroke-width="2.5"/></svg>`;
+}
 function corAdapt(p) { const k = grauPos(p.papel, p.pos, p.pos2); return k === 0 ? "var(--verde)" : k > 0 ? "var(--amar)" : "var(--verm)"; }
 function desenharEscalacao() {
   const t = timeEsc(), pr = $("prancheta");
   const linhas = `<div class="ln" style="left:-2px;right:-2px;top:50%;height:0"></div><div class="ln" style="left:50%;top:50%;width:26.9%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%)"></div>
     <div class="ln" style="left:20.4%;right:20.4%;top:-2px;height:15.7%"></div><div class="ln" style="left:20.4%;right:20.4%;bottom:-2px;height:15.7%"></div>
     <div class="ln" style="left:36.5%;right:36.5%;top:-2px;height:5.2%"></div><div class="ln" style="left:36.5%;right:36.5%;bottom:-2px;height:5.2%"></div>`;
-  pr.innerHTML = linhas + LUGARES.map(([bx, by, r], i) => `<div class="slot" data-lugar="${i}" data-r="${r}" style="left:${(by * 100).toFixed(1)}%;top:${((1 - bx) * 100).toFixed(1)}%">${r}</div>`).join("") + t.jog.map((p, i) => `<div class="dot ${p.fora ? "morto" : ""}" data-slot="${i}" style="left:${(p.by * 100).toFixed(1)}%;top:${((1 - p.bx) * 100).toFixed(1)}%;--anel:${corAdapt(p)}">
-      <div class="c" style="background:${p.papel === "GOL" ? "#e9c46a" : t.cor};border-color:${t.cor2};color:${p.papel === "GOL" ? "#222" : t.cor2}">${p.num}</div>
-      <div class="nm">${esc(p.nome)}</div><div class="pp">${p.papel}${p.pos !== p.papel ? " (" + p.pos + ")" : ""}</div></div>`).join("");
-  const lj = (p, tipo) => `<div class="lj ${tipo} ${p.saiu || p.fora ? "saiu" : ""}" data-jog="${p.id}"><b>${p.num}</b><span>${esc(p.nome)} ${carHtml(p.car)}${p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : ""}${p.saiu ? " (saiu)" : ""}${J && ESC_MODO === "jogo" && !p.saiu && tipo === "tit" ? ` <small class="dica">nota ${p.nota.toFixed(1)} · fôlego ${Math.round(p.folego)}%</small>` : ""}${ESC_MODO === "pre" && p.energiaIni != null ? ` <small class="dica">⚡${p.energiaIni}%</small> ${barraEnergia(p.energiaIni)}` : ""}</span><span class="pos">${p.pos}</span><span class="f">${p.forca}</span></div>`;
-  $("esc-tit-l").innerHTML = t.jog.map(p => lj(p, "tit")).join("");
+  const en = p => Math.round(ESC_MODO === "jogo" ? p.folego : p.energiaIni ?? 100);
+  const dica = p => `${p.nome} · ${p.pos}${p.pos2?.length ? "/" + p.pos2.join("/") : ""} · força ${p.forca}${p.car?.length ? " · " + p.car.map(k => CAR[k]?.[0] || k).join(", ") : ""}`;
+  pr.innerHTML = linhas + LUGARES.map(([bx, by, r], i) => `<div class="slot" data-lugar="${i}" data-r="${r}" title="${r}" style="left:${(by * 100).toFixed(1)}%;top:${((1 - bx) * 100).toFixed(1)}%">${camisaSvg(null)}</div>`).join("") + t.jog.map((p, i) => `<div class="dot ${p.fora ? "morto" : ""}" data-slot="${i}" title="${esc(dica(p))}" style="left:${(p.by * 100).toFixed(1)}%;top:${((1 - p.bx) * 100).toFixed(1)}%">
+      ${camisaSvg(t, p.papel === "GOL")}<div class="nm">${esc(p.nome)}${p.cartao === 1 ? " 🟨" : p.cartao === 2 ? " 🟥" : ""}</div><div class="pp"><b style="color:${corAdapt(p)}">${p.papel}</b> - F:${p.forca} E:${en(p)}${ESC_MODO === "jogo" ? ` N:${p.nota.toFixed(1)}` : ""}</div></div>`).join("");
+  const cam = p => `<div class="lj cam ${p.saiu || p.fora ? "saiu" : ""}" data-jog="${p.id}" title="${esc(dica(p))}">${camisaSvg(t, p.pos === "GOL")}<div class="nm">${esc(p.nome)}${p.saiu ? " (saiu)" : p.entrou ? " (entrou)" : ""}</div><div class="pp"><b>${p.pos}</b> - F:${p.forca} E:${en(p)}</div></div>`;
+  const banco = t.banco.filter(p => !p.disp), disp = t.banco.filter(p => p.disp);
+  $("esc-banco").innerHTML = `<div class="esc-faixa">Banco de reservas <span>${banco.filter(p => !p.saiu).length}/${BANCO_MAX}</span></div><div class="esc-cams">${banco.map(cam).join("") || "<p class='dica'>Ninguém no banco.</p>"}</div>
+    <div class="esc-faixa">Jogadores disponíveis <span>${disp.length}</span></div><div class="esc-cams">${disp.map(cam).join("") || "<p class='dica'>Todo o elenco está relacionado.</p>"}</div>
+    ${(t.lesionados || []).length ? `<p class="dica esc-les">🚑 Contundidos (fora): ${t.lesionados.map(p => `${esc(p.nome)} (${p.lesao} jogo${p.lesao > 1 ? "s" : ""})`).join(", ")}</p>` : ""}
+    <p class="dica esc-les">Arraste uma camisa para cima de outra para trocar. Só quem está no banco pode entrar durante o jogo.</p>`;
   t.cob ||= cobPadrao(t); const tit = t.jog.filter(p => !p.fora);
   $("esc-cobs").innerHTML = `<b class="dica" style="grid-column:1/-1">🎯 Cobradores oficiais e capitão</b>` + COBS.map(([k, rot]) => `<label class="dica">${k === "cap" ? "©" : "⚽"} ${rot}</label><select data-cob="${k}">${tit.filter(p => k === "cap" || p.papel !== "GOL").map(p => `<option ${t.cob[k] === p.nome ? "selected" : ""}>${esc(p.nome)}</option>`).join("")}</select>`).join("") +
     (goleiroCapPersuasivo(t) ? (() => { const ok = tit.filter(vozValido), v = portaVoz(t);
@@ -1492,7 +1535,6 @@ function desenharEscalacao() {
         : `<span class="dica">Nenhum jogador de linha tem Persuasão</span>`) +
         `<span class="dica" style="grid-column:1/-1">O capitão é goleiro e não sai do gol para falar com o juiz: o <b>porta-voz</b> faz isso por ele e não leva cartão por reclamação. Só pode ser porta-voz quem também tem Persuasão.</span>`; })() : "") +
     `<span class="dica" style="grid-column:1/-1">Se o capitão tem a habilidade <b>Persuasão</b>, ele fala com o juiz e ajuda o time (mais cartão para o rival, menos para o seu). Outros jogadores com Persuasão que não são o capitão também reclamam — e podem levar cartão por isso (menos o porta-voz, quando o capitão é goleiro).${(() => { const c = tit.filter(p => tem(p, "per")).map(p => p.nome); return c.length ? ` Titulares com Persuasão: <b>${c.map(esc).join(", ")}</b>.` : " Nenhum titular tem Persuasão."; })()}</span>`;
-  $("esc-res-l").innerHTML = t.banco.map(p => lj(p, "res")).join("") + ((t.lesionados || []).length ? `<p class="dica" style="margin-top:8px">🚑 Contundidos (fora): ${t.lesionados.map(p => `${esc(p.nome)} (${p.lesao} jogo${p.lesao > 1 ? "s" : ""})`).join(", ")}</p>` : "") || "<p class='dica'>Sem reservas.</p>";
 }
 $("esc-cobs").addEventListener("change", e => { const sl = e.target.closest("[data-cob]"); if (!sl) return; const t = timeEsc(); (t.cob ||= {})[sl.dataset.cob] = sl.value;
   const rot = sl.dataset.cob === "voz" ? "porta-voz do capitão" : COBS.find(c => c[0] === sl.dataset.cob)[1].toLowerCase();
@@ -1505,11 +1547,15 @@ function trocarNaEscalacao(a, b) {                        // a e b: jogadores (t
     const ca = { papel: a.papel, bx: a.bx, by: a.by }; Object.assign(a, { papel: b.papel, bx: b.bx, by: b.by }); Object.assign(b, ca);
     t.jog[ia] = b; t.jog[ib] = a; return;
   }
+  if (ia < 0 && ib < 0) {                                   // dois de fora: troca quem está no banco e quem está só disponível
+    if (ESC_MODO === "jogo" || !!a.disp === !!b.disp) return;
+    [a.disp, b.disp] = [b.disp, a.disp]; const ja = t.banco.indexOf(a), jb = t.banco.indexOf(b); t.banco[ja] = b; t.banco[jb] = a; return;
+  }
   const tit = ia >= 0 ? a : b, res = ia >= 0 ? b : a;
   if (t.jog.indexOf(tit) < 0 || t.banco.indexOf(res) < 0) return;
-  if (ESC_MODO === "jogo") { if (pedirSub(t, tit, res)) desenharEscalacao(); return; }
+  if (ESC_MODO === "jogo") { if (res.disp) { narrar("", `${minutoTxt()}📋 ${res.nome} não está no banco de reservas: só os ${BANCO_MAX} relacionados podem entrar.`); return; } if (pedirSub(t, tit, res)) desenharEscalacao(); return; }
   const i = t.jog.indexOf(tit), j = t.banco.indexOf(res);
-  Object.assign(res, { papel: tit.papel, bx: tit.bx, by: tit.by }); t.jog[i] = res; t.banco[j] = tit;
+  Object.assign(res, { papel: tit.papel, bx: tit.bx, by: tit.by }); tit.disp = res.disp; res.disp = false; t.jog[i] = res; t.banco[j] = tit;
 }
 // arrastar e soltar com o dedo ou o mouse
 let arr = null;
@@ -1543,7 +1589,7 @@ function soltarArrasto(e) {
   if (q && q !== a.p) trocarNaEscalacao(a.p, q);
   else if (campo && !q && t.jog.includes(a.p)) {            // soltou num espaço vazio: muda a posição do botão
     const r = $("prancheta").getBoundingClientRect(), by = lim((e.clientX - r.left) / r.width, .05, .95), bx = 1 - (e.clientY - r.top) / r.height;
-    const gol = a.p.papel === "GOL", ocupado = l => t.jog.some(q => q !== a.p && !q.fora && Math.abs(q.bx - l[0]) < .05 && Math.abs(q.by - l[1]) < .07);
+    const gol = a.p.papel === "GOL", ocupado = l => t.jog.some(q => q !== a.p && !q.fora && noLugar(q, l));
     const lugar = LUGARES.filter(l => (l[2] === "GOL") === gol && !ocupado(l)).sort((x, y) => Math.hypot(x[0] - bx, (x[1] - by) * .65) - Math.hypot(y[0] - bx, (y[1] - by) * .65))[0];
     if (lugar) { a.p.bx = lugar[0]; a.p.by = lugar[1]; a.p.papel = lugar[2]; }
     else { a.p.bx = gol ? lim(bx, .02, .12) : lim(bx, .14, .9); a.p.by = gol ? lim(by, .35, .65) : by; a.p.papel = papelDaPos(a.p.bx, a.p.by, gol); }
@@ -1658,7 +1704,7 @@ $("notas").onclick = e => {
   const b = e.target.closest("[data-sub]"); if (!b || !J) return;
   saindo = J.meu.jog.find(p => p.id === b.dataset.sub); if (!saindo) return;
   $("subs-tit").textContent = `Sai ${saindo.nome} (${saindo.papel}, nota ${saindo.nota.toFixed(1)})`;
-  const opc = J.meu.banco.filter(p => !p.saiu && !(J.meu.pend || []).some(x => x.entra === p)).sort((a, b) => (PARECE[saindo.papel].indexOf(a.pos) < 0 ? 1 : 0) - (PARECE[saindo.papel].indexOf(b.pos) < 0 ? 1 : 0) || b.forca - a.forca);
+  const opc = J.meu.banco.filter(p => !p.disp && !p.saiu && !(J.meu.pend || []).some(x => x.entra === p)).sort((a, b) => (PARECE[saindo.papel].indexOf(a.pos) < 0 ? 1 : 0) - (PARECE[saindo.papel].indexOf(b.pos) < 0 ? 1 : 0) || b.forca - a.forca);
   $("subs-lista").innerHTML = opc.map(p => `<button data-entra="${p.id}">${PARECE[saindo.papel].includes(p.pos) ? "✅" : "▫"} <b>${esc(p.nome)}</b> · ${p.pos} · força ${p.forca}</button>`).join("") || "<p class='dica'>Sem reservas.</p>";
   $("subs").classList.add("on");
 };
@@ -2106,13 +2152,13 @@ function mensagem(tec, txt) {
   tec.msgs = tec.msgs.slice(0, 80);
 }
 const rotuloData = () => { const ev = C.agenda?.[Math.max(0, (C.data || 1) - 1)]; return ev?.t === "L" ? `rodada ${C.rodada}` : ev ? { EST: "estadual", CB: "Copa do Brasil", REG: "regional", LIB: "Libertadores", MUN: "Mundial" }[ev.t] || "" : "pré-temporada"; };
-function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, marcacao: t.marcacao, jogada: t.jogada, linha: t.linha || "normal", cob: t.cob, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })) }; salvar(); }
+function guardarTatica(t) { T().tatica = { formacao: t.formacao, estilo: t.estilo, marcacao: t.marcacao, jogada: t.jogada, linha: t.linha || "normal", cob: t.cob, jog: t.jog.map(p => ({ nome: p.nome, papel: p.papel, bx: p.bx, by: p.by })), banco: t.banco.filter(p => !p.disp).map(p => p.nome) }; salvar(); }
 function aplicarTatica(t, tat) {                         // repete a escalação da última partida (quem ainda estiver no elenco)
   const todos = [...t.jog, ...t.banco], novo = [];
   for (const s of tat.jog) { const p = todos.find(x => s.nome ? x.nome === s.nome : x.id === s.id); if (p && !novo.includes(p)) { Object.assign(p, { papel: s.papel, bx: s.bx, by: s.by }); novo.push(p); } }
   if (novo.length !== 11) return;
   if (tat.cob) t.cob = { ...cobPadrao({ jog: novo }), ...tat.cob };
-  t.jog = novo; t.banco = todos.filter(p => !novo.includes(p)); t.formacao = tat.formacao; t.estilo = tat.estilo; t.marcacao = tat.marcacao || "normal"; t.jogada = tat.jogada || "misto"; t.linha = tat.linha || "normal";
+  t.jog = novo; t.banco = todos.filter(p => !novo.includes(p)); definirBanco(t, tat.banco); t.formacao = tat.formacao; t.estilo = tat.estilo; t.marcacao = tat.marcacao || "normal"; t.jogada = tat.jogada || "misto"; t.linha = tat.linha || "normal";
 }
 $("c-salvar").onclick = () => { salvar(); $("c-salvar").textContent = "✅ Salvo"; setTimeout(() => $("c-salvar").textContent = "💾 Salvar", 1500); };
 
