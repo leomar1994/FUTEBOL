@@ -202,7 +202,7 @@
           <p><button class="prim" id="c-jogar">▶ Jogar a partida</button> <button id="c-simular">⏭ Simular o jogo</button> <button id="c-esc">📋 Escalação</button></p><p class="dica" id="c-esc-info"></p></div>
         <div class="caixa" style="margin-top:12px"><h2>Resultados da rodada</h2><div class="res-l" id="c-res"></div></div>
         <div class="caixa" style="margin-top:12px"><h2>💰 Finanças</h2><div id="c-fin"></div>
-          <p><button id="c-elenco">👥 Elenco e vendas</button> <button class="prim" id="c-mercado">🛒 Mercado de transferências</button></p><div id="c-ofertas"></div></div>
+          <p><button id="c-elenco">👥 Elenco e vendas</button> <button class="prim" id="c-mercado">🛒 Mercado de transferências</button> <button id="c-estadio">🏟 Estádio e torcida</button></p><div id="c-ofertas"></div></div>
         <div class="caixa" style="margin-top:12px"><h2>Diretoria</h2><div id="c-dir"></div><p><button id="c-msgs">✉️ Mensagens</button></p></div>
       </div>
       <div class="caixa"><div class="abas" id="c-abas"></div><table class="tab"><thead><tr><th>#</th><th>Clube</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr></thead><tbody id="c-tab"></tbody></table>
@@ -383,6 +383,10 @@
   <div id="narra"></div>
 </div></div>
 
+<div class="modal" id="m-estadio"><div class="janela" style="max-width:560px"><h2>🏟 Estádio e torcida</h2><div id="est-info"></div>
+  <div class="ft"><label>Preço do ingresso (R$)</label><input type="text" id="est-preco" inputmode="numeric" style="max-width:120px"> <button id="est-salvar-preco">Salvar preço</button></div>
+  <p><button class="prim" id="est-ampliar"></button></p><p class="dica" id="est-msg"></p>
+  <p style="text-align:right"><button id="est-fechar">Fechar</button></p></div></div>
 <div class="modal" id="m-msgs"><div class="janela" style="max-width:620px"><h2>✉️ Caixa de mensagens</h2><div class="res-l" id="msgs-lista" style="max-height:60vh;overflow:auto"></div>
   <p style="text-align:right"><button id="msgs-fechar">Fechar</button></p></div></div>
 <div id="cena" aria-live="polite"><div class="cena-caixa" id="cena-caixa"></div></div>
@@ -1578,6 +1582,63 @@ function fisicoDaData(jogos) {                           // depois de cada data:
     for (const m of msgs) (C.avisosData[tec.nome] ||= []).push(m);
   }
 }
+/* ===================== estádio, torcida e bilheteria (carreira) =====================
+   Público = capacidade × ocupação. A ocupação sobe com a confiança da torcida e cai se o ingresso for caro.
+   Renda do jogo = público × preço. Ampliar o estádio custa tokens (vitória 2, empate 1) e a obra leva 3 jogos em casa. */
+const CAP_BASE = { A: 42000, B: 22000, C: 12000, D: 6000 }, PRECO_BASE = { A: 60, B: 40, C: 25, D: 15 };
+function estadio(id) {
+  C.est ||= {};
+  if (!C.est[id]) { const d = divDe(id) || "D", ids = C.ligas[d].ids, rank = ids.map(x => [x, forcaTime(timePorId(x))]).sort((a, b) => b[1] - a[1]).findIndex(x => x[0] === id);
+    C.est[id] = { cap: Math.round(CAP_BASE[d] * (1.3 - .6 * rank / ids.length) / 500) * 500, preco: PRECO_BASE[d], torcida: 60, amplia: 0, obra: null, ultimo: null }; }
+  return C.est[id];
+}
+const precoBase = id => PRECO_BASE[divDe(id) || "D"];
+function ocupacao(id, ev, adv) {
+  const e = estadio(id), pb = precoBase(id), r = e.preco / pb;
+  const grande = ev && ev.t !== "L" && ev.t !== "EST" ? 1.2 : adv && forcaTime(timePorId(adv)) > forcaTime(timePorId(id)) + 3 ? 1.12 : 1;
+  return lim((0.22 + 0.62 * e.torcida / 100) * Math.pow(1 / r, r > 1 ? 1.35 : .45) * grande, .06, 1);
+}
+function bilheteria(id, m, ev) {
+  const e = estadio(id), adv = m.casa === id ? m.fora : m.casa, pub = Math.round(e.cap * ocupacao(id, ev, adv) * (0.94 + Math.random() * .12));
+  const pubF = Math.min(e.cap, pub), renda = Math.round(pubF * e.preco / 1e4) / 100;
+  e.ultimo = { publico: pubF, renda, adv };
+  if (e.preco > precoBase(id) * 1.4) e.torcida = Math.max(0, e.torcida - 1);   // ingresso muito caro irrita a torcida
+  return renda;
+}
+function torcidaDaData(jogos) {
+  for (const tec of C.tecnicos) {
+    if (tec.demitido) continue;
+    const id = tec.clube, m = jogos.find(x => x.casa === id || x.fora === id); if (!m) continue;
+    const e = estadio(id), gp = m.casa === id ? m.gc : m.gf, gc = m.casa === id ? m.gf : m.gc;
+    const res = gp > gc || (m.pen && m.venc === id) ? "v" : gp < gc || (m.pen && m.venc !== id) ? "d" : "e";
+    e.torcida = Math.round(lim(e.torcida + (res === "v" ? (gp - gc >= 3 ? 5 : 3) : res === "e" ? -1 : -4) + (m.ko && res === "v" ? 2 : 0), 0, 100));
+    if (m.d) tec.tokens = (tec.tokens || 0) + (res === "v" ? 2 : res === "e" ? 1 : 0);   // tokens da liga (servem para ampliar o estádio)
+    if (e.obra && m.casa === id) { e.obra.resta--; if (e.obra.resta <= 0) { e.cap += e.obra.mais; (C.avisosData[tec.nome] ||= []).push(`🏟 Obra concluída! O estádio agora tem ${e.cap.toLocaleString("pt-BR")} lugares.`); e.obra = null; } }
+    if (e.torcida <= 20 && Math.random() < .3) (C.avisosData[tec.nome] ||= []).push(`📢 A torcida está revoltada (confiança ${e.torcida}%). O público vai cair.`);
+  }
+}
+const custoAmpliar = e => 10 + 6 * (e.amplia || 0);
+function abrirEstadio() {
+  const tec = T(), id = tec.clube, e = estadio(id), pb = precoBase(id), u = e.ultimo;
+  const cor = e.torcida > 60 ? "var(--verde)" : e.torcida > 35 ? "var(--amar)" : "var(--verm)";
+  $("est-info").innerHTML = `<p><b>${esc(nomeTime(id))}</b> · capacidade <b>${e.cap.toLocaleString("pt-BR")}</b> lugares${e.obra ? ` · 🚧 obra de +${e.obra.mais.toLocaleString("pt-BR")} (faltam ${e.obra.resta} jogo(s) em casa)` : ""}</p>
+    <p>Confiança da torcida <span class="conf"><i style="width:${e.torcida}%;background:${cor}"></i></span> <b>${e.torcida}%</b></p>
+    <p>Último jogo em casa: ${u ? `<b>${u.publico.toLocaleString("pt-BR")}</b> torcedores (${Math.round(u.publico / e.cap * 100)}% do estádio) · renda <b>${dinheiro(u.renda)}</b>` : "ainda não teve"}</p>
+    <p class="dica">Preço normal na sua divisão: R$ ${pb}. Mais barato enche mais o estádio; mais caro rende mais por torcedor, mas afasta o público e, muito caro, irrita a torcida. Vitórias aumentam a confiança; derrotas derrubam.
+    Agora, com R$ ${e.preco}: ocupação esperada de ~${Math.round(ocupacao(id) * 100)}% (${Math.round(e.cap * ocupacao(id)).toLocaleString("pt-BR")} pessoas, renda ~${dinheiro(Math.round(e.cap * ocupacao(id) * e.preco / 1e4) / 100)}).</p>
+    <p>Seus tokens: <b>🪙 ${tec.tokens || 0}</b> <span class="dica">(vitória na liga dá 2, empate dá 1)</span></p>`;
+  $("est-preco").value = e.preco;
+  $("est-ampliar").textContent = e.obra ? "🚧 Obra em andamento" : e.cap >= 100000 ? "Estádio no tamanho máximo" : `🏗 Ampliar +5.000 lugares (custa 🪙 ${custoAmpliar(e)} tokens)`;
+  $("est-ampliar").disabled = !!e.obra || e.cap >= 100000;
+  $("est-msg").textContent = ""; $("m-estadio").classList.add("on");
+}
+$("est-salvar-preco").onclick = () => { const v = Math.round(Number(String($("est-preco").value).replace(",", "."))); if (!(v >= 5 && v <= 500)) return ($("est-msg").textContent = "Escolha um preço entre R$ 5 e R$ 500.");
+  estadio(T().clube).preco = v; salvar(); abrirEstadio(); $("est-msg").textContent = "✅ Preço salvo para os próximos jogos em casa."; };
+$("est-ampliar").onclick = () => { const tec = T(), e = estadio(tec.clube), c = custoAmpliar(e);
+  if ((tec.tokens || 0) < c) return ($("est-msg").textContent = `Faltam tokens: precisa de ${c}, você tem ${tec.tokens || 0}.`);
+  tec.tokens -= c; e.amplia = (e.amplia || 0) + 1; e.obra = { mais: 5000, resta: 3 }; salvar(); abrirEstadio(); $("est-msg").textContent = "🏗 Obra iniciada! Fica pronta depois de 3 jogos em casa."; };
+$("est-fechar").onclick = () => { $("m-estadio").classList.remove("on"); abrirCarreira(); };
+$("c-estadio").onclick = abrirEstadio;
 function mensagem(tec, txt) {
   (tec.msgs ||= []).unshift({ txt, quando: `${C.temporada} · ${rotuloData()}`, lida: false });
   tec.msgs = tec.msgs.slice(0, 80);
@@ -1768,7 +1829,7 @@ function premiar(id, valor, motivo) {
   (f.premios ||= []).unshift(`${C.temporada} · ${motivo}: ${dinheiro(valor)}`); f.premios = f.premios.slice(0, 30);
   (C.avisosData[tec.nome] ||= []).push(`💰 ${motivo}: ${dinheiro(valor)}`);
 }
-function titulo(id, nome) { const tec = tecDe(id); if (!tec) return; tec.titulos.push(`${nome} ${C.temporada}`); tec.conf = Math.min(100, tec.conf + 15); (C.avisosData[tec.nome] ||= []).push(`🏆 CAMPEÃO: ${nome} ${C.temporada}!`); }
+function titulo(id, nome) { const tec = tecDe(id); if (!tec) return; if (C.est?.[id]) C.est[id].torcida = Math.min(100, C.est[id].torcida + 12); tec.titulos.push(`${nome} ${C.temporada}`); tec.conf = Math.min(100, tec.conf + 15); (C.avisosData[tec.nome] ||= []).push(`🏆 CAMPEÃO: ${nome} ${C.temporada}!`); }
 function avisoCopa(id, txt) { const tec = tecDe(id); if (tec) (C.avisosData[tec.nome] ||= []).push(txt); }
 
 function avancarMata(m, jogos, tipo) {
@@ -1820,6 +1881,7 @@ function resolverData(ev) {
   }
   if (ev.t === "MUN" && K.mun) { for (const j of jogos) if (K.mun.fase < 2) premioMundialEliminado(K.mun, j); avancarMata(K.mun, jogos, "MUN"); }
   financasDaData(ev, jogos);
+  torcidaDaData(jogos);
   fisicoDaData(jogos);
   C.pend = {};
 }
@@ -1918,7 +1980,7 @@ function financasDaData(ev, jogos) {
     const f = fin(tec.clube), d = divDe(tec.clube) || tec.div, t = timePorId(tec.clube), liga = ev.t === "L";
     if (!f.ultimo || f.ultimo.ciclo !== C.ciclo) f.ultimo = { receita: 0, despesa: 0, tv: 0, bil: 0, ciclo: C.ciclo };
     const casa = jogos.some(m => m.casa === tec.clube);
-    const tv = liga ? TV_RODADA[d] : 0, bil = casa ? BILHETERIA[d] * (ev.t === "L" ? 1 : 1.3) * (0.7 + Math.random() * 0.6) : 0, despesa = liga ? folha(t) : 0;
+    const jc = jogos.find(m => m.casa === tec.clube), tv = liga ? TV_RODADA[d] : 0, bil = jc ? bilheteria(tec.clube, jc, ev) : 0, despesa = liga ? folha(t) : 0;
     f.caixa = Math.round((f.caixa + tv + bil - despesa) * 100) / 100;
     f.ultimo.receita += tv + bil; f.ultimo.tv += tv; f.ultimo.bil += bil; f.ultimo.despesa += despesa;
     if (!liga) continue;
@@ -1942,6 +2004,7 @@ abrirCarreira = function () {
   const f = fin(tec.clube), t = timePorId(tec.clube);
   $("c-fin").innerHTML = `<p>Caixa: <b style="color:${f.caixa < 0 ? "var(--verm)" : "var(--verde)"}">${dinheiro(f.caixa)}</b> · folha por rodada: ${dinheiro(folha(t))} · elenco: ${t.jogadores.length} jogadores (valor ${dinheiro(t.jogadores.reduce((a, j) => a + valorJog(j), 0))})</p>` +
     (f.ultimo ? `<p class="dica">Último período: TV ${dinheiro(f.ultimo.tv || 0)} · bilheteria ${dinheiro(f.ultimo.bil || 0)} · salários ${dinheiro(f.ultimo.despesa)}</p>` : "") +
+    (() => { const e = estadio(tec.clube); return `<p class="dica">🏟 ${e.cap.toLocaleString("pt-BR")} lugares${e.ultimo ? ` · último público ${e.ultimo.publico.toLocaleString("pt-BR")}` : ""} · torcida ${e.torcida}% · 🪙 ${tec.tokens || 0} tokens${e.obra ? " · 🚧 obra" : ""}</p>`; })() +
     (f.premios?.length ? `<details><summary>🏅 Premiações recebidas (${f.premios.length})</summary>${f.premios.map(x => `<div class="dica">${esc(x)}</div>`).join("")}</details>` : "");
   $("c-ofertas").innerHTML = (tec.ofertas || []).map((o, i) => `<p>📩 ${esc(nomeTime(o.clube))} oferece <b>${dinheiro(o.valor)}</b> por <b>${esc(o.nome)}</b> <button data-of-ok="${i}">✔ Aceitar</button> <button data-of-no="${i}">✖ Recusar</button></p>`).join("");
 };
