@@ -69,6 +69,15 @@
   #subs .lista button { display: block; width: 100%; text-align: left; margin: 4px 0; }
   #tela-gol { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.55); pointer-events: none; }
   #tela-gol.on { display: flex; }
+  #cena { position: fixed; inset: 0; z-index: 29; display: none; align-items: flex-start; justify-content: center; padding-top: 10px; background: rgba(0,0,0,.18); pointer-events: none; }
+  #cena.on { display: flex; }
+  .cena-caixa { display: flex; align-items: center; gap: 18px; background: var(--painel); border: 2px solid var(--borda); border-radius: 18px; padding: 16px 26px 16px 10px; box-shadow: 0 10px 40px rgba(0,0,0,.6); animation: golPulo .35s ease-out; max-width: 92vw; }
+  .cena-caixa svg { width: 150px; height: 170px; flex: none; }
+  .cena-txt b { display: block; font-size: 26px; margin-bottom: 4px; } .cena-txt { font-size: 17px; }
+  .cena-txt .sai { color: #ff6b6b; } .cena-txt .entra { color: #4ade80; }
+  .ergue { animation: ergue .45s .15s ease-out both; } @keyframes ergue { from { transform: translateY(46px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .aponta { transform-origin: 46px 62px; animation: aponta .45s .9s ease-out both; } @keyframes aponta { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  .placa-num { animation: pisca 1s steps(2) infinite; } @keyframes pisca { 50% { opacity: .55; } }
   .gol-caixa { text-align: center; padding: 26px 46px; border-radius: 22px; border: 5px solid; box-shadow: 0 10px 50px rgba(0,0,0,.6); animation: golPulo .5s ease-out; }
   .gol-txt { font-size: clamp(54px, 12vw, 120px); font-weight: 900; letter-spacing: .04em; line-height: 1; text-shadow: 0 4px 0 rgba(0,0,0,.35); }
   .gol-time { font-size: clamp(22px, 4vw, 38px); font-weight: 800; margin-top: 8px; }
@@ -366,6 +375,7 @@
   <div id="narra"></div>
 </div></div>
 
+<div id="cena" aria-live="polite"><div class="cena-caixa" id="cena-caixa"></div></div>
 <div id="tela-gol" aria-live="assertive"><div class="gol-caixa"><div class="gol-txt">GOOOL!</div><div class="gol-time" id="gol-time"></div><div class="gol-autor" id="gol-autor"></div></div></div>
 <div class="modal" id="m-esc"><div class="janela" style="width:min(1060px,100%)">
   <div class="linha-campo"><h2 style="margin:0" id="esc-tit">📋 Escalação</h2>
@@ -506,8 +516,10 @@ function posicionar() {                                   // posição de cada b
     }
   }
   if (J.dono && !J.dono.fora) { J.dono.x = J.bola.x; J.dono.y = J.bola.y; }
+  const ataca = J.posse?.lado === "casa" ? 1 : -1;            // juiz acompanha o lance um pouco atrás e de lado
+  J.juiz = { x: lim(J.bola.x - ataca * 9, 4, L - 4), y: lim(J.bola.y + (J.bola.y < A / 2 ? 9 : -9), 4, A - 4) };
 }
-function congelarPos() { for (const t of [J.casa, J.fora]) for (const p of ativos(t)) { p.px = p.x; p.py = p.y; } }
+function congelarPos() { for (const t of [J.casa, J.fora]) for (const p of ativos(t)) { p.px = p.x; p.py = p.y; } if (J.juiz) J.juizP = { ...J.juiz }; }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const perto = (t, alvo) => ativos(t).filter(p => p.papel !== "GOL").sort((a, b) => dist(a, alvo) - dist(b, alvo))[0];
 const adapt = p => { const k = (PARECE[p.papel] || []).indexOf(p.pos); return k < 0 ? 0.8 : 1 - k * 0.05; };   // fora de posição rende menos
@@ -699,8 +711,8 @@ function escanteio(t, o) {
 function cartao(t, p) {
   if (!p) return;
   if (p.cartao === 1 && rnd() > .2) return;              // já amarelado: o juiz costuma aliviar
-  if (p.cartao === 1 || rnd() < .015) { p.cartao = 2; p.fora = true; t.st.vermelhos++; nota(p, -1.5); narrar("verm", `${minutoTxt()}🟥 Cartão vermelho para ${p.nome} (${t.curto})! O ${t.nome} fica com ${ativos(t).length}.`); if (J.dono === p) { J.dono = perto(t, J.bola) || goleiro(t); } }
-  else { p.cartao = 1; t.st.amarelos++; nota(p, -.3); narrar("cartao", `${minutoTxt()}🟨 Amarelo para ${p.nome} (${t.curto}).`); }
+  if (p.cartao === 1 || rnd() < .015) { const segundo = p.cartao === 1; p.cartao = 2; p.fora = true; t.st.vermelhos++; nota(p, -1.5); narrar("verm", `${minutoTxt()}🟥 Cartão vermelho para ${p.nome} (${t.curto})! O ${t.nome} fica com ${ativos(t).length}.`); if (J.dono === p) { J.dono = perto(t, J.bola) || goleiro(t); } cenaCartao(t, p, true, segundo); }
+  else { p.cartao = 1; t.st.amarelos++; nota(p, -.3); narrar("cartao", `${minutoTxt()}🟨 Amarelo para ${p.nome} (${t.curto}).`); cenaCartao(t, p, false); }
 }
 function trocaPosse(t, p, pos) { J.posse = t; J.dono = p || perto(t, pos) || goleiro(t); J.bola = { x: pos.x, y: pos.y }; J.passeDe = null; }
 
@@ -771,9 +783,49 @@ function substituir(t, sai, entra) {
   t.jog[i] = entra; t.banco = t.banco.filter(p => p !== entra); t.banco.push(sai); t.subs++;
   if (J.dono === sai) J.dono = entra;
   narrar("", `${minutoTxt()}🔁 ${t.curto}: sai ${sai.nome} (nota ${sai.nota.toFixed(1)}), entra ${entra.nome}.`);
+  cenaSub(t, sai, entra);
   atualizarTudo(); return true;
 }
 const malJogando = p => !p.fora && (J.seg > 15 * 60) && (p.nota < (p.papel === "GOL" ? 5.0 : 5.7) || p.folego < 35 || p.cartao === 1 && J.seg > 60 * 60);
+
+/* ===================== juiz: cartões e substituições (o jogo espera a cena) ===================== */
+function svgJuiz(mao, aponta) {                          // árbitro desenhado em SVG (camisa preta, braço erguido)
+  return `<svg viewBox="-10 -32 165 202" aria-hidden="true">
+    <rect x="50" y="128" width="17" height="38" rx="5" fill="#1d1d1d"/><rect x="72" y="128" width="17" height="38" rx="5" fill="#1d1d1d"/>
+    <rect x="44" y="60" width="52" height="72" rx="14" fill="#111"/><rect x="44" y="60" width="52" height="10" rx="5" fill="#c6f432"/>
+    <circle cx="70" cy="38" r="20" fill="#d9a066"/><path d="M50 34 q20 -26 40 0 q-6 -12 -20 -12 q-14 0 -20 12z" fill="#2b1d0e"/>
+    <circle cx="63" cy="38" r="2.4" fill="#222"/><circle cx="77" cy="38" r="2.4" fill="#222"/><path d="M63 47 q7 4 14 0" stroke="#222" stroke-width="2" fill="none"/>
+    <rect x="96" y="66" width="34" height="12" rx="6" fill="#111"/>
+    ${aponta ? `<g class="aponta"><rect x="4" y="56" width="44" height="12" rx="6" fill="#111"/><circle cx="6" cy="62" r="7.5" fill="#d9a066"/><rect x="-6" y="59" width="10" height="5" rx="2.5" fill="#d9a066"/></g>` : `<rect x="22" y="70" width="24" height="12" rx="6" fill="#111" transform="rotate(35 46 76)"/>`}
+    <g class="ergue">${mao}</g></svg>`;
+}
+const MAO_CARTAO = cor => `<rect x="112" y="12" width="13" height="58" rx="6.5" fill="#111"/><circle cx="118.5" cy="14" r="7.5" fill="#d9a066"/><rect x="108" y="-14" width="22" height="30" rx="3" fill="${cor}" stroke="#000" stroke-width="1.5"/>`;
+function MAO_PLACA(sai, entra) {
+  return `<rect x="96" y="20" width="12" height="48" rx="6" fill="#111"/><rect x="132" y="20" width="12" height="48" rx="6" fill="#111"/>
+    <rect x="82" y="-8" width="68" height="40" rx="5" fill="#0b0b0b" stroke="#555" stroke-width="2"/>
+    <text x="99" y="20" text-anchor="middle" font-size="20" font-weight="800" font-family="monospace" fill="#ff3b3b" class="placa-num">${sai}</text>
+    <text x="133" y="20" text-anchor="middle" font-size="20" font-weight="800" font-family="monospace" fill="#3bff6b" class="placa-num">${entra}</text>
+    <text x="99" y="29" text-anchor="middle" font-size="7" fill="#ff3b3b">SAI</text><text x="133" y="29" text-anchor="middle" font-size="7" fill="#3bff6b">ENTRA</text>`;
+}
+function cena(html, ms) {                                 // mostra a cena e segura o lance até ela acabar (fila se vier mais de uma)
+  if (!J || J.rapido) return;
+  (J.cenas ||= []).push([html, ms]);
+  if (J.cenas.length === 1) tocarCena();
+}
+function tocarCena() {
+  if (!J || !J.cenas?.length) { $("cena").classList.remove("on"); return; }
+  const [html, ms] = J.cenas[0], meuJ = J;
+  $("cena-caixa").innerHTML = html; $("cena-caixa").style.animation = "none"; void $("cena-caixa").offsetWidth; $("cena-caixa").style.animation = "";
+  $("cena").classList.add("on"); J.cenaAte = performance.now() + ms;
+  clearTimeout(J.tCena); J.tCena = setTimeout(() => { if (J !== meuJ) return; J.cenas.shift(); if (J.subVis && !J.cenas.length) J.subVis = null; tocarCena(); }, ms);
+}
+function cenaCartao(t, p, vermelho, segundo) {
+  cena(`${svgJuiz(MAO_CARTAO(vermelho ? "#e01e1e" : "#ffd200"), vermelho)}<div class="cena-txt"><b>${vermelho ? "🟥 Expulso!" : "🟨 Cartão amarelo"}</b>${esc(p.nome)} <span class="dica">(${esc(t.nome)})</span>${segundo ? "<br><span class='dica'>Segundo amarelo</span>" : ""}${vermelho ? `<br><span class="dica">${esc(t.curto)} fica com ${ativos(t).length} em campo</span>` : ""}</div>`, vermelho ? 3600 : 2600);
+}
+function cenaSub(t, sai, entra) {
+  J.subVis = J.rapido ? null : { t, sai: { x: sai.x, y: sai.y, num: sai.num }, entra, t0: performance.now(), dur: 3600 };
+  cena(`${svgJuiz(MAO_PLACA(sai.num, entra.num), false)}<div class="cena-txt"><b>🔁 Substituição</b>${esc(t.nome)}<br><span class="sai">⬇ Sai ${esc(sai.nome)} (${sai.num})</span><br><span class="entra">⬆ Entra ${esc(entra.nome)} (${entra.num})</span></div>`, 3800);
+}
 
 /* ===================== tela de GOL ===================== */
 function mostrarGol(t, autor) {
@@ -837,17 +889,32 @@ function desenhar(agora) {
   if (!J) return;
   const dt = agora - (J._tf || agora); J._tf = agora;
   // avança a simulação
-  if (J.anim && !J.pausado) {
+  const emCena = J.cenaAte > agora;
+  if (J.anim && !J.pausado && !emCena) {
     const msPorSeg = MS_POR_SEG / J.vel, e = (agora - J.anim.t0) / (J.anim.dur * msPorSeg);
     if (e >= 1) { if (!J.pausado) fimDoLance(); }
     else if (Math.floor(agora / 250) !== J._ultPainel) { J._ultPainel = Math.floor(agora / 250); $("minuto").textContent = J.tempo === 1 ? `${Math.min(minuto(), 45)}'` : `${Math.min(minuto(), 90)}'`; }
   }
-  if (J.anim && J.pausado) J.anim.t0 += dt;               // segura o lance enquanto pausado
+  if (J.anim && (J.pausado || emCena)) J.anim.t0 += dt;   // segura o lance enquanto pausado ou durante a cena do juiz
   if (!$("m-campo").classList.contains("on")) return;
   desenharCampo();
   const e = J.anim ? lim((agora - J.anim.t0) / (J.anim.dur * MS_POR_SEG / J.vel), 0, 1) : 1, s = e * e * (3 - 2 * e);
+  if (J.juiz) {                                              // o árbitro (preto, borda verde-limão)
+    const jp = J.juizP || J.juiz, x = (jp.x + (J.juiz.x - jp.x) * s) * K, y = (jp.y + (J.juiz.y - jp.y) * s) * K;
+    cx.beginPath(); cx.arc(x + 2, y + 3, 11, 0, 7); cx.fillStyle = "rgba(0,0,0,.3)"; cx.fill();
+    cx.beginPath(); cx.arc(x, y, 11, 0, 7); cx.fillStyle = "#111"; cx.fill(); cx.lineWidth = 3; cx.strokeStyle = "#c6f432"; cx.stroke();
+    cx.fillStyle = "#c6f432"; cx.font = "bold 11px system-ui"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText("J", x, y + 1);
+    if (J.cenaAte > agora && J.cenas?.[0]) { const c = J.cenas[0][0]; const cor = c.includes("#e01e1e") ? "#e01e1e" : c.includes("#ffd200") ? "#ffd200" : null; if (cor) { cx.fillStyle = cor; cx.fillRect(x + 6, y - 30, 11, 15); cx.strokeStyle = "#000"; cx.lineWidth = 1; cx.strokeRect(x + 6, y - 30, 11, 15); } }
+  }
+  const sv = J.subVis, es = sv ? lim((agora - sv.t0) / sv.dur, 0, 1) : 1, borda = sv && sv.sai.y < A / 2 ? -3 : A + 3;
+  const botao = (x, y, cor, cor2, num, alfa = 1) => { cx.globalAlpha = alfa; cx.beginPath(); cx.arc(x, y, 15, 0, 7); cx.fillStyle = cor; cx.fill(); cx.lineWidth = 4; cx.strokeStyle = cor2; cx.stroke();
+    cx.fillStyle = cor2; cx.font = "bold 14px system-ui"; cx.textAlign = "center"; cx.textBaseline = "middle"; cx.fillText(num, x, y + 1); cx.globalAlpha = 1; };
+  if (sv && es < 1) {                                       // quem sai caminha até a lateral
+    const k = Math.min(1, es * 1.4); botao(sv.sai.x * K, (sv.sai.y + (borda - sv.sai.y) * k) * K, sv.t.cor, sv.t.cor2, sv.sai.num, 1 - k * .6);
+  }
   for (const t of [J.casa, J.fora]) for (const p of ativos(t)) {
-    const x = (p.px + (p.x - p.px) * s) * K, y = (p.py + (p.y - p.py) * s) * K;
+    let x = (p.px + (p.x - p.px) * s) * K, y = (p.py + (p.y - p.py) * s) * K;
+    if (sv && es < 1 && p === sv.entra) { const k = Math.max(0, es * 1.4 - .4); y = (borda + (p.py - borda) * k) * K; x = p.px * K; }
     cx.beginPath(); cx.arc(x + 2, y + 3, 15, 0, 7); cx.fillStyle = "rgba(0,0,0,.3)"; cx.fill();
     cx.beginPath(); cx.arc(x, y, 15, 0, 7); cx.fillStyle = p.papel === "GOL" ? "#e9c46a" : t.cor; cx.fill();
     cx.lineWidth = 4; cx.strokeStyle = t.cor2; cx.stroke();
@@ -1059,7 +1126,7 @@ function sincronizarAoVivo() {
   if (a.intervalo) { J.anim = null; J.aoVivo.resta = a.resta; return intervalo(); }
   atualizarTudo(); if (!J.anim && !J.aguardando) proximoLance();
 }
-$("nova").onclick = () => { if (J?.tGol) clearTimeout(J.tGol); if (J?.tInt) clearTimeout(J.tInt); $("vel").style.pointerEvents = ""; esconderGol(); const fim = J; J = null; $("pausa").disabled = false; $("pausa").textContent = "⏸ Pausar"; $("m-campo").classList.remove("on");
+$("nova").onclick = () => { if (J?.tGol) clearTimeout(J.tGol); if (J?.tCena) clearTimeout(J.tCena); $("cena").classList.remove("on"); if (J?.tInt) clearTimeout(J.tInt); $("vel").style.pointerEvents = ""; esconderGol(); const fim = J; J = null; $("pausa").disabled = false; $("pausa").textContent = "⏸ Pausar"; $("m-campo").classList.remove("on");
   rnd = Math.random; $("abrir-esc").hidden = false;
   if (fim?.replay || fim?.amistosoOn) tela("online"); else if (fim?.carreira) fimDoJogoCarreira(fim); else tela("inicio"); };
 // substituição do jogador
@@ -2140,7 +2207,7 @@ function elencoOnline(c) {                               // elenco do servidor; 
 async function assistirReplay(jogoId, obj) {
   const j = obj || ON.jogos.find(x => x.id === jogoId); if (!j || !j.jogado) return;
   await carregarElencos([j.casa, j.fora]);
-  if (J && !J.fim) { if (J.tGol) clearTimeout(J.tGol); if (J.tInt) clearTimeout(J.tInt); }
+  if (J && !J.fim) { if (J.tGol) clearTimeout(J.tGol); if (J.tInt) clearTimeout(J.tInt); if (J.tCena) clearTimeout(J.tCena); } $("cena").classList.remove("on");
   const casaB = elencoOnline(ON.clubes[j.casa]), foraB = elencoOnline(ON.clubes[j.fora]);
   const meuId = ON.eu?.clube, euCasa = meuId === j.fora ? false : true;
   rnd = semente("replay" + j.id);
