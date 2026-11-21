@@ -344,13 +344,14 @@
             <details id="tn-criar"><summary><b>➕ Criar torneio</b></summary>
               <div class="ft"><label>Nome</label><input type="text" id="tn-nome" maxlength="40" placeholder="Ex.: Copa de Verão"></div>
               <div class="ft"><label>Formato</label><select id="tn-formato"><option value="mata">Mata-mata (jogo único, empate → pênaltis; tem disputa de 3º lugar)</option><option value="pontos">Liga amistosa: pontos corridos (todos contra todos)</option></select></div>
-              <div class="ft"><label>Vagas</label><select id="tn-vagas"></select></div>
+              <div class="ft"><label>Máximo de clubes</label><select id="tn-vagas"></select></div>
+              <p class="dica">O tamanho final depende de quantos técnicos entrarem: quanto mais técnicos, mais jogos. Na hora de começar, o torneio fica com o menor formato que cabe todo mundo e o resto é completado com robôs.</p>
               <div class="ft"><label>Aposta / inscrição</label><input type="text" id="tn-taxa" value="10 mil" placeholder="ex.: 10 mil, 500 mil, 1,5 mi"></div>
               <p class="dica" id="tn-exemplo"></p>
               <div class="ft"><label>Prêmio</label><select id="tn-premio"></select></div>
               <div class="ft"><label>Início</label><input type="datetime-local" id="tn-inicio" style="font:inherit;background:var(--painel2);color:var(--texto);border:1px solid var(--borda);border-radius:8px;padding:8px"></div>
               <div class="ft"><label>Entre rodadas</label><select id="tn-intervalo"><option value="20">20 minutos</option><option value="30">30 minutos</option><option value="60">1 hora</option><option value="120">2 horas</option><option value="1440">1 dia</option></select></div>
-              <label class="dica"><input type="checkbox" id="tn-robos" checked> Completar as vagas que sobrarem com clubes robô (se um robô ficar entre os premiados, a parte dele não é paga)</label>
+              <label class="dica"><input type="checkbox" id="tn-robos" checked> Completar as vagas que sobrarem com clubes robô (robô que ficar entre os 4 primeiros leva a parte dele do prêmio — ele também joga os outros campeonatos)</label>
               <p><button class="prim" id="tn-criar-bt">🏆 Criar e me inscrever</button> <span class="dica" id="tn-msg"></span></p>
             </details>
             <div class="res-l" id="tn-lista"></div></div>
@@ -2517,18 +2518,19 @@ function lerValor(txt) {                                     // "10k", "10 mil",
 }
 const premioTxt = p => p.map((x, i) => `${i + 1}º ${x}%`).join(" · ");
 function opcoesTorneio() {
-  const f = $("tn-formato").value, vs = f === "mata" ? [4, 8, 16] : [4, 6, 8], vAnt = Number($("tn-vagas").value), fAnt = $("tn-formato").dataset.ant || f; $("tn-formato").dataset.ant = f;
-  $("tn-vagas").innerHTML = vs.map(v => `<option value="${v}">${v} clubes</option>`).join(""); if (vs.includes(vAnt)) $("tn-vagas").value = vAnt;
+  const f = $("tn-formato").value, vs = f === "mata" ? [4, 8, 16, 32] : [4, 6, 8, 10, 12, 14, 16], vAnt = Number($("tn-vagas").value), fAnt = $("tn-formato").dataset.ant || f; $("tn-formato").dataset.ant = f;
+  $("tn-vagas").innerHTML = vs.map(v => `<option value="${v}">até ${v} clubes</option>`).join(""); if (vs.includes(vAnt)) $("tn-vagas").value = vAnt;
   const v = Number($("tn-vagas").value), pAnt = $("tn-premio").value;
   $("tn-premio").innerHTML = Object.entries(PREMIOS).filter(([, l]) => l.length <= Math.min(4, v)).map(([k, l]) => `<option value="${k}">${premioTxt(l)}${k === premioPadrao(v) ? " (padrão)" : ""}</option>`).join("");
   $("tn-premio").value = PREMIOS[pAnt] && PREMIOS[pAnt].length <= Math.min(4, v) && pAnt !== premioPadrao(vAnt, fAnt) ? pAnt : premioPadrao(v);
 }
 $("tn-formato").onchange = opcoesTorneio; $("tn-vagas").onchange = opcoesTorneio;
 function exemploTorneio() {
-  const v = Number($("tn-vagas").value) || 8, a = lerValor($("tn-taxa").value), p = PREMIOS[$("tn-premio").value] || [65, 20, 10, 5], h = Math.max(2, Math.ceil(v * .6));
+  const vmax = Number($("tn-vagas").value) || 8, a = lerValor($("tn-taxa").value), p = PREMIOS[$("tn-premio").value] || [65, 20, 10, 5], h = Math.max(2, Math.ceil(vmax * .6));
+  const v = Math.min(vmax, $("tn-formato").value === "mata" ? [4, 8, 16, 32].find(x => x >= h) : Math.max(4, h + h % 2));
   if (!(a > 0)) return ($("tn-exemplo").textContent = "Sem aposta: o torneio vale só o troféu.");
   const tot = a * h * 1.2;
-  $("tn-exemplo").textContent = `Exemplo: se ${h} técnicos entrarem (o resto vira robô), apostam ${dinheiro(a * h)}; o jogo põe +20% = ${dinheiro(tot)} de prêmio. ${p.map((x, i) => `${i + 1}º leva ${dinheiro(tot * x / 100)}`).join(" · ")}.`;
+  $("tn-exemplo").textContent = `Exemplo: se ${h} técnicos entrarem, o torneio fica com ${v} clubes (${v - h} robôs); eles apostam ${dinheiro(a * h)}; o jogo põe +20% = ${dinheiro(tot)} de prêmio. ${p.map((x, i) => `${i + 1}º leva ${dinheiro(tot * x / 100)}`).join(" · ")}.`;
 }
 for (const id of ["tn-taxa", "tn-vagas", "tn-premio", "tn-formato"]) $(id).addEventListener("input", exemploTorneio);
 function desenharTorneios() {
@@ -2551,7 +2553,8 @@ function desenharTorneios() {
   const abertos = D.torneios.filter(t => t.status === "inscricoes"), andamento = D.torneios.filter(t => t.status === "andamento"), fim = D.torneios.filter(t => ["encerrado", "cancelado"].includes(t.status)).reverse().slice(0, 5);
   let h = "";
   if (abertos.length) h += `<h3>📝 Inscrições abertas</h3>` + abertos.map(t => { const l = insc(t.id);
-    return `<div style="margin:8px 0">${cab(t)}<div>Começa <b>${dataHora(t.inicio)}</b> · rodadas a cada ${t.intervalo >= 60 ? (t.intervalo / 60) + " h" : t.intervalo + " min"} · ${l.length}/${t.vagas} inscritos${t.robos ? " (o resto vira robô)" : " (sem robôs: precisa lotar)"}</div>
+    const tam = Math.min(t.vagas, t.formato === "mata" ? [4, 8, 16, 32].find(x => x >= l.length) || 32 : Math.max(4, l.length + l.length % 2));
+    return `<div style="margin:8px 0">${cab(t)}<div>Começa <b>${dataHora(t.inicio)}</b> · rodadas a cada ${t.intervalo >= 60 ? (t.intervalo / 60) + " h" : t.intervalo + " min"} · ${l.length} técnico(s) inscrito(s), máximo ${t.vagas}${t.robos ? ` · se começasse agora: ${tam} clubes (${tam - l.length} robôs)` : " (sem robôs: precisa fechar um formato)"}</div>
       <div class="dica">${l.map(nomeIns).join(", ")}</div>
       ${eu.demitido ? "" : meu(t) ? `<button data-tn-sair="${t.id}">${t.criador === eu.user_id ? "Cancelar torneio (devolve as inscrições)" : "Sair (devolve a inscrição)"}</button>` : l.length < t.vagas ? `<button class="prim" data-tn-entrar="${t.id}">✍ Inscrever (${dinheiro(Number(t.taxa))})</button>` : "<span class='dica'>Lotado</span>"}</div>`; }).join("");
   if (andamento.length) h += `<h3>⚽ Em andamento</h3>` + andamento.map(t => `<div style="margin:8px 0">${cab(t)}${t.formato === "pontos" ? tabelaPts(t) : ""}${jogosHtml(t)}</div>`).join("");

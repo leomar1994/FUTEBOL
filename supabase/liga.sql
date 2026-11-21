@@ -487,8 +487,8 @@ begin
   select * into eu from liga_tecnicos where user_id = uid;
   if eu.clube is null then raise exception 'Você precisa estar num clube para criar torneios.'; end if;
   if length(trim(coalesce(p_nome, ''))) < 3 then raise exception 'Dê um nome ao torneio (pelo menos 3 letras).'; end if;
-  if p_formato = 'mata' and p_vagas not in (4, 8, 16) then raise exception 'Mata-mata: 4, 8 ou 16 vagas.'; end if;
-  if p_formato = 'pontos' and p_vagas not in (4, 6, 8) then raise exception 'Pontos corridos: 4, 6 ou 8 vagas.'; end if;
+  if p_formato = 'mata' and p_vagas not in (4, 8, 16, 32) then raise exception 'Mata-mata: até 4, 8, 16 ou 32 clubes.'; end if;
+  if p_formato = 'pontos' and (p_vagas < 4 or p_vagas > 16 or p_vagas % 2 = 1) then raise exception 'Liga amistosa: até 4 a 16 clubes (número par).'; end if;
   if p_formato not in ('mata', 'pontos') then raise exception 'Formato inválido.'; end if;
   if p_taxa is null or p_taxa < 0 or p_taxa > 50 then raise exception 'A inscrição deve ser entre R$ 0 e R$ 50 mi.'; end if;
   if p_premio is null or array_length(p_premio, 1) > least(4, p_vagas) or (select sum(x) from unnest(p_premio) x) <> 100
@@ -515,7 +515,7 @@ begin
   update liga_torneios set pote = pote - i.pago where id = p_id;
 end $$;
 
--- divide o pote: posições empatadas (ex.: os dois semifinalistas) dividem as fatias que ocupam. Fatia de robô não é paga.
+-- divide o pote: posições empatadas dividem as fatias que ocupam. Robô entre os premiados leva a parte dele.
 create or replace function public.liga_torneio_premiar(p_id bigint) returns void language plpgsql security definer set search_path = public as $$
 declare t liga_torneios; g record; v numeric;
 begin
@@ -526,7 +526,7 @@ begin
   end loop;
   update liga_clubes c set caixa = coalesce(c.caixa, 0) + i.premio
     from liga_torneio_inscritos i left join liga_tecnicos tt on tt.user_id = i.user_id
-    where i.torneio = p_id and i.user_id is not null and i.premio > 0 and c.id = coalesce(tt.clube, i.clube);
+    where i.torneio = p_id and i.premio > 0 and c.id = coalesce(tt.clube, i.clube);   -- robô premiado fica com a parte dele (vai para o caixa do clube robô)
   update liga_tecnicos set titulos = titulos || jsonb_build_array('Torneio ' || t.nome)
     where user_id = (select user_id from liga_torneio_inscritos where torneio = p_id and posicao = 1);
   update liga_torneios set status = 'encerrado', campeao = (select clube from liga_torneio_inscritos where torneio = p_id and posicao = 1) where id = p_id;
@@ -539,6 +539,9 @@ declare t record; g record; n int; k int; ids text[]; vivos text[]; r int; i int
 begin
   for t in select * from liga_torneios where status = 'inscricoes' and inicio <= now() for update skip locked loop
     select count(*) filter (where user_id is not null), count(*) into n, k from liga_torneio_inscritos where torneio = t.id;
+    -- o tamanho depende de quantos técnicos entraram: o menor formato que cabe todos (o resto é robô), até o máximo escolhido
+    t.vagas := least(t.vagas, case when t.formato = 'mata' then (select min(x) from unnest(array[4, 8, 16, 32]) x where x >= k) else greatest(4, k + k % 2) end);
+    update liga_torneios set vagas = t.vagas where id = t.id;
     if n < 2 or (k < t.vagas and not t.robos) then perform liga_torneio_cancelar(t.id); continue; end if;
     if k < t.vagas then
       insert into liga_torneio_inscritos (torneio, clube)
