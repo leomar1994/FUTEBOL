@@ -922,7 +922,7 @@ function chuteMarcado(t, o, d, def, de) {
 function falta(t, o, vit, fal) {
   o.st.faltas++; nota(fal, -.06);
   let pb = prog(t, J.bola.x), centro = Math.abs(J.bola.y - A / 2), naArea = pb > (L - 16.5) / L && centro < 20;
-  if (naArea && rnd() > .14) { naArea = false; J.bola = { x: xDe(t, entre(.78, .82)), y: J.bola.y }; pb = prog(t, J.bola.x); }   // quase sempre o contato é na entrada da área
+  if (naArea && rnd() > .17) { naArea = false; J.bola = { x: xDe(t, entre(.78, .82)), y: J.bola.y }; pb = prog(t, J.bola.x); }   // quase sempre o contato é na entrada da área
   narrar("", minutoTxt() + (naArea ? `${fal.nome} derruba ${vit.nome} dentro da área!` : `Falta de ${fal.nome} em ${vit.nome}.`));
   if (naArea) { scout(vit, "PS"); scout(fal, "PC"); } else { scout(vit, "FS"); scout(fal, "FC"); }
   // persuasão: o CAPITÃO com essa habilidade fala com o juiz e ajuda o time (mais cartão para o rival, menos para o seu).
@@ -962,17 +962,21 @@ function montarBarreira(t, o, bola) {
   const gol = { x: xDe(t, 1), y: A / 2 }, dd = Math.max(1, dist(bola, gol)), ux = (gol.x - bola.x) / dd, uy = (gol.y - bola.y) / dd;
   const bx = bola.x + ux * 9.15, by = bola.y + uy * 9.15, n = dd < 22 ? 5 : dd < 30 ? 4 : 3;
   const quem = ativos(o).filter(p => p.papel !== "GOL").sort((a, b) => dist(a, { x: bx, y: by }) - dist(b, { x: bx, y: by })).slice(0, n);
-  quem.forEach((p, i) => { const off = (i - (n - 1) / 2) * 1.7; p.x = bx - uy * off; p.y = lim(by + ux * off, 1, A - 1); });
+  // espaçados um pouco mais que na vida real, para dar para ver cada um
+  quem.forEach((p, i) => { const off = (i - (n - 1) / 2) * 2.6; p.x = bx - uy * off; p.y = lim(by + ux * off, 1, A - 1); });
+  const ext = (n - 1) / 2 * 2.6 + 1.6;
+  J.barreira = { a: { x: bx - uy * ext, y: by + ux * ext }, b: { x: bx + uy * ext, y: by - ux * ext }, n, ate: performance.now() + 4500 * (MS_POR_SEG / 150) * 2 / (J.vel || 1) };
   return quem;
 }
 function faltaPerigosa(t, o, cob, de, centro) {
   const gk = goleiro(o), bola = { ...J.bola }, gol = { x: xDe(t, 1), y: A / 2 }, dGol = dist(bola, gol);
   const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL"), alvos = area.filter(p => SETOR[p.papel] >= 2 || p.papel === "ZAG").slice(0, 5);
-  const direto = tem(cob, "fal") ? dGol < 36 && centro < 26 : tem(cob, "cru") ? false : centro < 22 && dGol < 30 && rnd() < .45;
+  const direto = tem(cob, "fal") ? dGol < 32 && centro < 20 : tem(cob, "cru") ? false : centro < 16 && dGol < 27 && rnd() < .5;
   const arruma = () => {
     const bar = montarBarreira(t, o, bola);
     gk.x = xDe(t, .99); gk.y = lim(A / 2 + (bola.y < A / 2 ? 2.5 : -2.5), A / 2 - 3.5, A / 2 + 3.5);     // o goleiro cobre o canto sem barreira
-    alvos.forEach((p, i) => { p.x = xDe(t, entre(.84, .9)); p.y = A / 2 + (i - (alvos.length - 1) / 2) * 5 + entre(-1, 1); });   // atacantes na área
+    const longe = bola.y < A / 2 ? 1 : -1;                  // atacantes no lado da área longe da barreira, perto da pequena área
+    alvos.forEach((p, i) => { p.x = xDe(t, entre(.9, .94)); p.y = lim(A / 2 + longe * (2 + i * 4.2), 8, A - 8); });
     const marc = ativos(o).filter(p => p.papel !== "GOL" && !bar.includes(p));
     alvos.forEach((p, i) => { const m = marc[i]; if (m) { m.x = p.x + sentido(t) * 1.2; m.y = p.y + .8; } });   // cada um com o seu marcador
     const dd = Math.max(1, dist(bola, gol)); cob.x = bola.x - (gol.x - bola.x) / dd * 2.2; cob.y = bola.y - (gol.y - bola.y) / dd * 2.2;
@@ -1002,10 +1006,11 @@ function chute(t, o, autor, tipo) {
   t.st.chutes++;
   const bonus = (tem(autor, "fin") && tipo !== "falta" && tipo !== "penalti" ? 1 : 0), longe = tem(autor, "lon") && dGol > 18;
   const cara = tipo === "cara"; if (cara) tipo = "normal";
-  let noAlvo = rnd() < (cara ? lim(.72 + (fa - 70) / 150 + .1 * hab(autor, "fin"), .55, .92) : tipo === "penalti" ? .9 + (.04 * hab(autor, "pen")) : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 + (.1 * hab(autor, "fal")) : 0) + bonus * .06 + (longe ? .08 : 0) + (tipo === "cabeca" && .08 * hab(autor, "cab")), .2, .8));
-  let pGol = tipo === "penalti" ? lim(.82 + (fa - fg) / 250 + (.06 * hab(autor, "pen")) - (.12 * hab(gk, "ppn")), .6, .94)
-    : lim(.38 - dGol * .012 + (fa - fg) / 160 + (tipo === "cabeca" ? -.06 + (.08 * hab(autor, "cab")) : 0) + (tipo === "falta" ? -.12 + (.12 * hab(autor, "fal")) : 0) + (tipo === "rebote" ? -.05 : 0)
+  let noAlvo = rnd() < (cara ? lim(.72 + (fa - 70) / 150 + .1 * hab(autor, "fin"), .55, .92) : tipo === "penalti" ? .93 + (.04 * hab(autor, "pen")) : lim(.42 + (fa - 70) / 120 - dGol / 140 + (tipo === "falta" ? -.05 + (.1 * hab(autor, "fal")) : 0) + bonus * .06 + (longe ? .08 : 0) + (tipo === "cabeca" && .08 * hab(autor, "cab")), .2, .8));
+  let pGol = tipo === "penalti" ? lim(.86 + (fa - fg) / 250 + (.06 * hab(autor, "pen")) - (.12 * hab(gk, "ppn")), .6, .94)
+    : lim(.35 - dGol * .012 + (fa - fg) / 160 + (tipo === "cabeca" ? -.06 + (.08 * hab(autor, "cab")) : 0) + (tipo === "falta" ? -.12 + (.12 * hab(autor, "fal")) : 0) + (tipo === "rebote" ? -.05 : 0)
       + bonus * .07 + (longe ? dGol * .005 : 0) - (.07 * hab(gk, "ref")), .04, .65);
+  if (tipo === "falta" && !J.roteiro) { noAlvo = rnd() < lim(.4 + .12 * hab(autor, "fal") - Math.max(0, dGol - 20) * .008, .2, .7); pGol = lim(.07 + .08 * hab(autor, "fal") + (fa - fg) / 220 - Math.max(0, dGol - 18) * .008 - .05 * hab(gk, "ref"), .06, .45); }
   if (cara && tipo !== "penalti") pGol = lim(.27 + (fa - fg) / 160 + .1 * hab(autor, "fin") - .12 * hab(gk, "ref") - .04 * hab(gk, "sai"), .22, .8);   // cara a cara: REFLEXO do goleiro pesa mais
   if (J.roteiro) {                                          // replay: os gols acontecem exatamente como o servidor decidiu
     const g = J.roteiro.find(x => !x.feito && x.lado === t.lado && minuto() >= x.min);
@@ -1324,6 +1329,11 @@ function desenhar(agora) {
     cx.beginPath(); cx.roundRect ? cx.roundRect(x - 7.5, y - 8, 15, 14, 4) : cx.rect(x - 7.5, y - 8, 15, 14); cx.fillStyle = "#111"; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = "#c6f432"; cx.stroke();
     cx.beginPath(); cx.arc(x, y - 12.5, 5, 0, 7); cx.fillStyle = "#d9a066"; cx.fill(); cx.lineCap = "butt"; cx.restore();
     if (J.cenaAte > agora && J.cenas?.[0]) { const c = J.cenas[0][0]; const cor = c.includes("#e01e1e") ? "#e01e1e" : c.includes("#ffd200") ? "#ffd200" : null; if (cor) { cx.fillStyle = cor; cx.fillRect(x + 12, y - 40, 12, 16); cx.strokeStyle = "#000"; cx.lineWidth = 1; cx.strokeRect(x + 12, y - 40, 12, 16); } }
+  }
+  if (J.barreira && J.barreira.ate > agora) {               // barreira: faixa branca atrás dos jogadores e a etiqueta
+    const { a: ba, b: bb, n } = J.barreira; cx.save(); cx.lineCap = "round"; cx.lineWidth = 34; cx.strokeStyle = "rgba(255,255,255,.22)";
+    cx.beginPath(); cx.moveTo(ba.x * K, ba.y * K); cx.lineTo(bb.x * K, bb.y * K); cx.stroke();
+    cx.fillStyle = "#fff"; cx.font = "bold 13px system-ui"; cx.textAlign = "center"; cx.fillText(`🧱 Barreira (${n})`, (ba.x + bb.x) / 2 * K, Math.min(ba.y, bb.y) * K - 24); cx.restore();
   }
   if (J.linhaImp && J.linhaImp.ate > agora) {             // linha de impedimento (tracejada) na hora do lançamento
     cx.save(); cx.setLineDash([10, 8]); cx.lineWidth = 2.5; cx.strokeStyle = "rgba(255,230,80,.85)"; cx.beginPath(); cx.moveTo(J.linhaImp.x * K, 0); cx.lineTo(J.linhaImp.x * K, A * K); cx.stroke(); cx.restore();
