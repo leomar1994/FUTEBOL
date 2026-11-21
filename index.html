@@ -842,23 +842,60 @@ function falta(t, o, vit, fal) {
   if (naArea) return penalti(t, o);
   const cob = cobrador(t, "fal"), de = { ...J.bola };
   J.posse = t; J.dono = cob; J.passeDe = null;
-  if (pb > .66) {
-    if (centro < 24 && rnd() < .55) return fazerLance(16, de, () => chute(t, o, cob, "falta"), `Falta perigosa para o ${t.curto}. ${cob.nome} ajeita a bola, a barreira se forma...`);
-    const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL"), cab = pesoSorteio(area, p => (p.papel === "ZAG" || p.papel === "CA" ? 3 : 1) * ((1 + (2.5 - 1) * hab(p, "cab"))));
-    if (rnd() < .45) { J.bola = { x: xDe(t, .9), y: A / 2 + entre(-6, 6) }; J.dono = cab; J.passeDe = cob; return fazerLance(14, de, () => chute(t, o, cab, "cabeca"), `${cob.nome} cobra a falta levantando na área...`); }
-    const zag = perto(o, { x: xDe(t, .9), y: A / 2 }); nota(zag, .06);
-    trocaPosse(o, zag, { x: xDe(t, .82), y: A / 2 + entre(-12, 12) });
-    return fazerLance(14, de, null, `${cob.nome} cobra a falta na área e ${zag.nome} afasta de cabeça.`);
-  }
+  if (pb > .66) return faltaPerigosa(t, o, cob, de, centro);
   return fazerLance(10, de, null, rnd() < .5 ? `${cob.nome} cobra a falta e o ${t.curto} recomeça.` : "");
 }
 function penalti(t, o) {
   t.st.pen = (t.st.pen || 0) + 1;
   const cob = cobrador(t, "pen"), gk = goleiro(o), de = { ...J.bola };
-  J.posse = t; J.dono = cob; J.passeDe = null; J.bola = { x: xDe(t, (L - 11) / L), y: A / 2 };
+  const marca = { x: xDe(t, (L - 11) / L), y: A / 2 };
+  J.posse = t; J.dono = cob; J.passeDe = null; J.bola = { ...marca };
   narrar("verm", `${minutoTxt()}🚨 PÊNALTI para o ${t.nome}!`);
-  fazerLance(28, de, () => chute(t, o, cob, "penalti"), `${cob.nome} vai para a cobrança. ${gk.nome} no gol...`);
-  for (const p of [...ativos(t), ...ativos(o)]) if (p !== cob && p !== gk && prog(t, p.x) > .82) p.x = xDe(t, entre(.76, .81));   // todos fora da área
+  const arruma = () => {                                    // todos fora da área, goleiro na linha, cobrador atrás da bola
+    for (const p of [...ativos(t), ...ativos(o)]) if (p !== cob && p !== gk && prog(t, p.x) > .8) { p.x = xDe(t, entre(.74, .79)); p.y = lim(p.y, A / 2 - 22, A / 2 + 22); }
+    gk.x = xDe(t, .995); gk.y = A / 2; cob.x = marca.x - sentido(t) * 1.6; cob.y = marca.y;
+  };
+  // 1) o cobrador leva a bola devagar até a marca  2) o juiz apita  3) a cobrança
+  fazerLance(16, de, () => {
+    cena(`${svgJuiz(MAO_APITO, false)}<div class="cena-txt"><b>📣 O juiz apita</b>${esc(cob.nome)} na bola, ${esc(gk.nome)} no gol.</div>`, 1400);
+    fazerLance(5, { ...marca }, () => chute(t, o, cob, "penalti"), `O juiz apita. ${cob.nome} toma distância...`); arruma(); cob.x = marca.x - sentido(t) * 3.2;
+  }, `${cob.nome} pega a bola e caminha até a marca do pênalti. ${gk.nome} se posiciona na linha...`);
+  arruma();
+}
+/* Falta perto da área: o cobrador vai até a bola, a barreira se forma, o juiz apita.
+   Com COBRANÇA DE FALTA ele bate direto; com CRUZAMENTO ele levanta na área; sem nenhuma das duas, escolhe pela posição. */
+function montarBarreira(t, o, bola) {
+  const gol = { x: xDe(t, 1), y: A / 2 }, dd = Math.max(1, dist(bola, gol)), ux = (gol.x - bola.x) / dd, uy = (gol.y - bola.y) / dd;
+  const bx = bola.x + ux * 9.15, by = bola.y + uy * 9.15, n = dd < 22 ? 5 : dd < 30 ? 4 : 3;
+  const quem = ativos(o).filter(p => p.papel !== "GOL").sort((a, b) => dist(a, { x: bx, y: by }) - dist(b, { x: bx, y: by })).slice(0, n);
+  quem.forEach((p, i) => { const off = (i - (n - 1) / 2) * 1.7; p.x = bx - uy * off; p.y = lim(by + ux * off, 1, A - 1); });
+  return quem;
+}
+function faltaPerigosa(t, o, cob, de, centro) {
+  const gk = goleiro(o), bola = { ...J.bola }, gol = { x: xDe(t, 1), y: A / 2 }, dGol = dist(bola, gol);
+  const area = ativos(t).filter(p => p !== cob && p.papel !== "GOL"), alvos = area.filter(p => SETOR[p.papel] >= 2 || p.papel === "ZAG").slice(0, 5);
+  const direto = tem(cob, "fal") ? dGol < 36 && centro < 26 : tem(cob, "cru") ? false : centro < 22 && dGol < 30 && rnd() < .45;
+  const arruma = () => {
+    const bar = montarBarreira(t, o, bola);
+    gk.x = xDe(t, .99); gk.y = lim(A / 2 + (bola.y < A / 2 ? 2.5 : -2.5), A / 2 - 3.5, A / 2 + 3.5);     // o goleiro cobre o canto sem barreira
+    alvos.forEach((p, i) => { p.x = xDe(t, entre(.84, .9)); p.y = A / 2 + (i - (alvos.length - 1) / 2) * 5 + entre(-1, 1); });   // atacantes na área
+    const marc = ativos(o).filter(p => p.papel !== "GOL" && !bar.includes(p));
+    alvos.forEach((p, i) => { const m = marc[i]; if (m) { m.x = p.x + sentido(t) * 1.2; m.y = p.y + .8; } });   // cada um com o seu marcador
+    const dd = Math.max(1, dist(bola, gol)); cob.x = bola.x - (gol.x - bola.x) / dd * 2.2; cob.y = bola.y - (gol.y - bola.y) / dd * 2.2;
+  };
+  fazerLance(12, de, () => {
+    cena(`${svgJuiz(MAO_APITO, false)}<div class="cena-txt"><b>📣 Barreira formada, o juiz apita</b>${esc(cob.nome)} na bola.</div>`, 1300);
+    if (direto) { fazerLance(4, { ...bola }, () => chute(t, o, cob, "falta"), `O juiz apita. ${cob.nome} parte para a bola...`); arruma(); return; }
+    // cruzamento na área: quem tem cabeceio tem mais chance de ganhar no alto
+    const cab = pesoSorteio(alvos.length ? alvos : area, p => (p.papel === "ZAG" || p.papel === "CA" ? 3 : 1) * ((1 + (2.5 - 1) * hab(p, "cab"))));
+    const bom = lim(.42 + (.14 * hab(cob, "cru")) + (.06 * hab(cab, "cab")) - (tem(gk, "sai") ? .1 : 0), .2, .75);
+    const queda = { x: xDe(t, entre(.88, .92)), y: A / 2 + entre(-6, 6) };
+    if (rnd() < bom) { J.bola = queda; J.dono = cab; J.passeDe = cob; fazerLance(6, { ...bola }, () => chute(t, o, cab, "cabeca"), `O juiz apita. ${cob.nome} levanta na área...`, "", queda); arruma(); cab.x = queda.x; cab.y = queda.y; return; }
+    if (tem(gk, "sai") && rnd() < .45) { nota(gk, .1); trocaPosse(o, gk, queda); fazerLance(6, { ...bola }, null, `${cob.nome} levanta na área e ${gk.nome} sai do gol para socar a bola.`, "", queda); arruma(); return; }
+    const zag = perto(o, queda); nota(zag, .06); trocaPosse(o, zag, { x: xDe(t, .82), y: A / 2 + entre(-12, 12) });
+    fazerLance(6, { ...bola }, null, `${cob.nome} cruza a falta na área e ${zag.nome} afasta de cabeça.`, "", queda); arruma();
+  }, `Falta perigosa para o ${t.curto}. ${cob.nome} vai até a bola e a barreira se forma...`);
+  arruma();
 }
 function chute(t, o, autor, tipo) {
   const gk = goleiro(o), dGol = Math.hypot(xDe(t, 1) - J.bola.x, J.bola.y - A / 2);
@@ -886,6 +923,7 @@ function chute(t, o, autor, tipo) {
     nota(autor, -.05);
     const fora = { x: xDe(t, 1) + 3 * sentido(t), y: A / 2 + sorteia([-1, 1]) * entre(5, 12) };
     narrar("", minutoTxt() + intro + " " + (tipo === "penalti" ? sorteia(["Isolou! Pênalti desperdiçado.", "Na trave! Pênalti perdido!", "Para fora! Que chance perdida."]) : tipo === "falta" ? sorteia(["Por cima da barreira e do gol.", "Bate na barreira.", "Raspando a trave!"]) : sorteia(["Para fora.", "Por cima do gol.", "Tirou tinta da trave!", "Longe do alvo."])));
+    if (tipo === "penalti" || tipo === "falta") cena(`<div class="cena-txt"><b>${tipo === "penalti" ? "❌ Pênalti perdido!" : "❌ Não foi dessa vez"}</b>${esc(autor.nome)} ${tipo === "penalti" ? "manda para fora" : "não acerta o gol"}.</div>`, 1500);
     return fazerLance(4, de, () => { trocaPosse(o, gk, { x: xDe(o, .06), y: A / 2 }); J.seg += 15; bolaParada("meta"); posicionar(); congelarPos(); }, "", "", fora);
   }
   t.st.alvo++;
@@ -910,6 +948,7 @@ function chute(t, o, autor, tipo) {
   const encaixa = rnd() < .4;
   narrar("", minutoTxt() + intro + " " + (tipo === "penalti" ? sorteia([`${gk.nome} DEFENDE O PÊNALTI!`, `${gk.nome} adivinha o canto e pega!`]) :
     encaixa ? sorteia([`${gk.nome} encaixa.`, `${gk.nome} segura firme.`, `${gk.nome} defende em dois tempos.`]) : sorteia([`Grande defesa de ${gk.nome}!`, `${gk.nome} espalma!`, `${gk.nome} voa e salva!`, `${gk.nome} faz milagre!`])));
+  if (tipo === "penalti" || tipo === "falta") cena(`<div class="cena-txt"><b>🧤 ${tipo === "penalti" ? "Defendeu o pênalti!" : "Defesa do goleiro!"}</b>${esc(gk.nome)} pega a cobrança de ${esc(autor.nome)}.</div>`, 1500);
   const voa = () => { gk.x = alvoGol.x - 1.2 * sentido(t); gk.y = alvoGol.y; };     // o goleiro vai na bola
   if (!encaixa && tipo !== "penalti" && rnd() < .14) {                                            // rebote
     const sobra = { x: xDe(t, entre(.9, .94)), y: A / 2 + entre(-8, 8) }, quem = perto(t, sobra);
@@ -1069,6 +1108,8 @@ function svgJuiz(mao, aponta) {                          // árbitro desenhado e
     <g class="ergue">${mao}</g></svg>`;
 }
 const MAO_CARTAO = cor => `<rect x="112" y="12" width="13" height="58" rx="6.5" fill="#111"/><circle cx="118.5" cy="14" r="7.5" fill="#d9a066"/><rect x="108" y="-14" width="22" height="30" rx="3" fill="${cor}" stroke="#000" stroke-width="1.5"/>`;
+const MAO_APITO = `<rect x="112" y="12" width="13" height="58" rx="6.5" fill="#111"/><circle cx="118.5" cy="14" r="7.5" fill="#d9a066"/><rect x="104" y="-6" width="20" height="10" rx="5" fill="#cfd4d8" stroke="#333" stroke-width="1.5"/><circle cx="104" cy="-1" r="5.5" fill="#cfd4d8" stroke="#333" stroke-width="1.5"/>
+  <path d="M130 -14 l10 -6 M132 -4 h12 M130 6 l10 6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`;
 function MAO_PLACA(sai, entra) {
   return `<rect x="96" y="20" width="12" height="48" rx="6" fill="#111"/><rect x="132" y="20" width="12" height="48" rx="6" fill="#111"/>
     <rect x="82" y="-8" width="68" height="40" rx="5" fill="#0b0b0b" stroke="#555" stroke-width="2"/>
